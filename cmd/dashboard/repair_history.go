@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ai-flight-dashboard/internal/agyscanner"
 	"ai-flight-dashboard/internal/calculator"
 	"ai-flight-dashboard/internal/codexusage"
 	"ai-flight-dashboard/internal/db"
@@ -56,12 +57,18 @@ func runRepairHistory(database *db.DB, calc *calculator.Calculator, deviceID str
 		log.Fatalf("Codex repair scan failed: %v", err)
 	}
 
+	agyScanner := agyscanner.New(database, calc, deviceID)
+	agyScanned, err := agyScanner.Backfill(nil)
+	if err != nil {
+		log.Printf("Antigravity backfill warning: %v", err)
+	}
+
 	supersededGemini, err := database.SupersedeLegacyUsageBySourceFilePathsAndDevices("Gemini CLI", geminiFiles, localRepairDeviceIDs(deviceID))
 	if err != nil {
 		log.Fatalf("Failed to supersede replayed Gemini rows: %v", err)
 	}
 
-	fmt.Printf("✅ History repair complete: superseded %d old Gemini rows, reset %d file offsets, replayed %d JSONL records and %d Codex events\n", supersededGemini, resetFiles, scanned, codexScanned)
+	fmt.Printf("✅ History repair complete: superseded %d old Gemini rows, reset %d file offsets, replayed %d JSONL records, %d Codex events, %d Antigravity events\n", supersededGemini, resetFiles, scanned, codexScanned, agyScanned)
 }
 func discoverGeminiHistoryFiles(scanDirs []string) ([]string, error) {
 	return discoverHistoryFiles(scanDirs, func(path string) bool {
