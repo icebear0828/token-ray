@@ -162,8 +162,8 @@ func TestScanIncrementalOffset(t *testing.T) {
 	}
 
 	u = <-ch
-	if u.InputTokens != 2000 || u.CachedTokens != 500 {
-		t.Errorf("third record: input=%d cached=%d, want 2000/500", u.InputTokens, u.CachedTokens)
+	if u.InputTokens != 2500 || u.CachedTokens != 500 {
+		t.Errorf("third record: input=%d cached=%d, want 2500/500", u.InputTokens, u.CachedTokens)
 	}
 }
 
@@ -214,6 +214,22 @@ func TestParseTimestamp(t *testing.T) {
 	}
 	if ts.Hour() != 15 || ts.Minute() != 18 {
 		t.Errorf("unexpected time: %v", ts)
+	}
+}
+
+func TestNormalizeResponseModel(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"gemini-3-flash-a", "gemini-3-flash"},
+		{"gemini-3.1-pro-b", "gemini-3.1-pro"},
+		{"gemini-3-flash", "gemini-3-flash"},
+		{"claude-sonnet-4-6", "claude-sonnet-4-6"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		got := normalizeResponseModel(c.in)
+		if got != c.want {
+			t.Errorf("normalizeResponseModel(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 
