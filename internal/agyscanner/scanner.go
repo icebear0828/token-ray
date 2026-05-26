@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"path/filepath"
 	"time"
 
@@ -86,7 +87,8 @@ func (s *Scanner) scanTrajectory(port int, cascadeID string, workspaces map[stri
 		}
 
 		cached := usage.CacheReadInt()
-		modelName := cm.ResponseModel
+		totalInput := input + cached
+		modelName := normalizeResponseModel(cm.ResponseModel)
 		if modelName == "" {
 			modelName = cm.ModelDisplayName
 		}
@@ -97,13 +99,13 @@ func (s *Scanner) scanTrajectory(port int, cascadeID string, workspaces map[stri
 		ts := parseTimestamp(cm.ChatStartMetadata.CreatedAt)
 		uuid := fmt.Sprintf("agy:%s:%d", cascadeID, i)
 
-		cost, _ := s.calc.CalculateCost(modelName, input, cached, 0, output)
+		cost, _ := s.calc.CalculateCost(modelName, totalInput, cached, 0, output)
 
 		u := watcher.TokenUsage{
-			Source:      antigravity.Source,
-			Model:       modelName,
-			Project:     project,
-			InputTokens: input,
+			Source:       antigravity.Source,
+			Model:        modelName,
+			Project:      project,
+			InputTokens:  totalInput,
 			CachedTokens: cached,
 			OutputTokens: output,
 			Timestamp:   ts,
@@ -141,6 +143,18 @@ func (s *Scanner) loadWorkspaces() map[string]string {
 		}
 	}
 	return ws
+}
+
+// normalizeResponseModel strips internal suffixes (e.g. "-a", "-b") from
+// Google's internal model IDs so they match the pricing table entries.
+func normalizeResponseModel(name string) string {
+	if name == "" {
+		return ""
+	}
+	if strings.HasSuffix(name, "-a") || strings.HasSuffix(name, "-b") {
+		return name[:len(name)-2]
+	}
+	return name
 }
 
 func parseTimestamp(s string) time.Time {
