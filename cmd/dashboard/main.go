@@ -2,6 +2,7 @@ package main
 
 import (
 	root "ai-flight-dashboard"
+	"ai-flight-dashboard/internal/agyscanner"
 	"ai-flight-dashboard/internal/alert"
 	"ai-flight-dashboard/internal/calculator"
 	"ai-flight-dashboard/internal/codexusage"
@@ -269,8 +270,10 @@ func main() {
 	go func() {
 		s := scanner.New(database, calc, *deviceID)
 		codexScanner := codexusage.New(database, calc, *deviceID)
+		agyScanner := agyscanner.New(database, calc, *deviceID)
 		s.ScanAll(scanDirs, w.UsageChan) // incremental; auto-caches new dirs to known_dirs
 		codexScanner.Scan(w.UsageChan)
+		agyScanner.Scan(w.UsageChan)
 
 		if *syncMode == "fsnotify" {
 			if len(knownDirs) == 0 {
@@ -292,6 +295,7 @@ func main() {
 				case <-codexTicker.C:
 					if !w.IsPaused() {
 						codexScanner.Scan(w.UsageChan)
+						agyScanner.Scan(w.UsageChan)
 					}
 				}
 			}
@@ -308,6 +312,7 @@ func main() {
 					if !w.IsPaused() {
 						s.ScanKnownFiles(w.UsageChan)
 						codexScanner.Scan(w.UsageChan)
+						agyScanner.Scan(w.UsageChan)
 					}
 				case <-slowTicker.C:
 					if !w.IsPaused() {
