@@ -220,9 +220,12 @@ func TestParseTimestamp(t *testing.T) {
 func TestNormalizeResponseModel(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"gemini-3-flash-a", "gemini-3-flash"},
-		{"gemini-3.1-pro-b", "gemini-3.1-pro"},
-		{"gemini-3-flash", "gemini-3-flash"},
+		{"gemini-3.1-pro-high", "gemini-3.1-pro"},
+		{"gemini-3-flash-c", "gemini-3-flash"},
+		{"claude-opus-4-6-thinking", "claude-opus-4-6"},
 		{"claude-sonnet-4-6", "claude-sonnet-4-6"},
+		{"gemini-3.5-flash-extra-low", "gemini-3.5-flash"},
+		{"gemini-default", ""},
 		{"", ""},
 	}
 	for _, c := range cases {
@@ -241,4 +244,22 @@ func portFromURL(t *testing.T, url string) int {
 		t.Fatalf("parse port from %q: %v", url, err)
 	}
 	return port
+}
+
+func TestNormalizeDisplayName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Gemini 3.5 Flash (Low)", "gemini-3.5-flash"},
+		{"Gemini 3.5 Flash (Medium)", "gemini-3.5-flash"},
+		{"Gemini 3.1 Pro (High)", "gemini-3.1-pro"},
+		{"Claude Sonnet 4.6 (Thinking)", "claude-sonnet-4-6"},
+		{"Claude Opus 4.6 (Thinking)", "claude-opus-4-6"},
+		{"GPT-OSS 120B (Medium)", "gpt-oss-120b"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		got := normalizeDisplayName(c.in)
+		if got != c.want {
+			t.Errorf("normalizeDisplayName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
 }

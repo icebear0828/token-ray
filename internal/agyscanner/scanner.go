@@ -88,9 +88,9 @@ func (s *Scanner) scanTrajectory(port int, cascadeID string, workspaces map[stri
 
 		cached := usage.CacheReadInt()
 		totalInput := input + cached
-		modelName := normalizeResponseModel(cm.ResponseModel)
+		modelName := normalizeDisplayName(cm.ModelDisplayName)
 		if modelName == "" {
-			modelName = cm.ModelDisplayName
+			modelName = normalizeResponseModel(cm.ResponseModel)
 		}
 		if modelName == "" {
 			modelName = "unknown"
@@ -147,14 +147,47 @@ func (s *Scanner) loadWorkspaces() map[string]string {
 	return ws
 }
 
+// normalizeDisplayName converts display names to pricing table keys:
+//   "Gemini 3.5 Flash (Low)" → "gemini-3.5-flash"
+//   "Claude Sonnet 4.6 (Thinking)" → "claude-sonnet-4-6"
+func normalizeDisplayName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	if idx := strings.LastIndex(name, "("); idx > 0 {
+		name = strings.TrimSpace(name[:idx])
+	}
+	lower := strings.ToLower(name)
+	// Gemini keeps dots in version: "gemini-3.5-flash"
+	keepDot := strings.HasPrefix(lower, "gemini")
+	var b strings.Builder
+	lastDash := false
+	for _, r := range lower {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || (r == '.' && keepDot) {
+			b.WriteRune(r)
+			lastDash = false
+		} else if b.Len() > 0 && !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
 // normalizeResponseModel strips internal suffixes (e.g. "-a", "-b") from
 // Google's internal model IDs so they match the pricing table entries.
 func normalizeResponseModel(name string) string {
 	if name == "" {
 		return ""
 	}
-	if strings.HasSuffix(name, "-a") || strings.HasSuffix(name, "-b") {
-		return name[:len(name)-2]
+	for _, suffix := range []string{"-thinking", "-extra-low", "-high", "-medium", "-low", "-a", "-b", "-c", "-d"} {
+		if strings.HasSuffix(name, suffix) {
+			name = name[:len(name)-len(suffix)]
+		}
+	}
+	if name == "gemini-default" {
+		return ""
 	}
 	return name
 }
