@@ -86,10 +86,10 @@ func TestEmbeddedPricingMatchesOfficialRates(t *testing.T) {
 			OutputPricePerM:        25.00,
 		},
 		"claude-haiku-4-5-20251001": {
-			InputPricePerM:         0.80,
-			CachedPricePerM:        0.08,
-			CacheCreationPricePerM: 1.00,
-			OutputPricePerM:        4.00,
+			InputPricePerM:         1.00,
+			CachedPricePerM:        0.10,
+			CacheCreationPricePerM: 1.25,
+			OutputPricePerM:        5.00,
 		},
 	}
 
