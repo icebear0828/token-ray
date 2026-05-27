@@ -111,7 +111,9 @@ func (s *Scanner) scanTrajectory(port int, cascadeID string, workspaces map[stri
 			Timestamp:   ts,
 			UUID:        uuid,
 		}
-		usageChan <- u
+		if usageChan != nil {
+			usageChan <- u
+		}
 		if err := s.db.InsertUsageWithTime(u, cost, ts, "agy://"+cascadeID, s.DeviceID); err != nil {
 			continue
 		}
