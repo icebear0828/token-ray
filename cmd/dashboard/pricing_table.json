@@ -79,10 +79,10 @@
       "output_price_per_m": 25.00
     },
     "claude-haiku-4-5-20251001": {
-      "input_price_per_m": 0.80,
-      "cached_price_per_m": 0.08,
-      "cache_creation_price_per_m": 1.00,
-      "output_price_per_m": 4.00
+      "input_price_per_m": 1.00,
+      "cached_price_per_m": 0.10,
+      "cache_creation_price_per_m": 1.25,
+      "output_price_per_m": 5.00
     }
   }
 }
