@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"ai-flight-dashboard/internal/watcher"
@@ -127,13 +128,34 @@ func parsePortFromLog(path string) int {
 }
 
 func (s *Scanner) unscannedConversations() []string {
-	ws := s.loadWorkspaces()
 	var unscanned []string
-	for convID := range ws {
-		offsetKey := "agy:" + convID + ":gmCount"
-		count, _ := s.db.GetOffset(offsetKey)
-		if count == 0 {
-			unscanned = append(unscanned, convID)
+	seen := make(map[string]bool)
+
+	home, _ := os.UserHomeDir()
+	convDirs := []string{
+		filepath.Join(home, ".gemini", "antigravity-cli", "conversations"),
+		filepath.Join(home, ".gemini", "antigravity", "conversations"),
+	}
+	for _, dir := range convDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasSuffix(name, ".pb") {
+				continue
+			}
+			convID := strings.TrimSuffix(name, ".pb")
+			if seen[convID] {
+				continue
+			}
+			seen[convID] = true
+			offsetKey := "agy:" + convID + ":gmCount"
+			count, _ := s.db.GetOffset(offsetKey)
+			if count == 0 {
+				unscanned = append(unscanned, convID)
+			}
 		}
 	}
 	return unscanned
