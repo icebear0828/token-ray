@@ -49,7 +49,7 @@ func (s *Scanner) backfillConversation(convID string, workspaces map[string]stri
 	logFile := filepath.Join(os.TempDir(), fmt.Sprintf("agy-backfill-%s.log", convID))
 	defer os.Remove(logFile)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	agyPath := findAgyBinary()
@@ -60,6 +60,7 @@ func (s *Scanner) backfillConversation(convID string, workspaces map[string]stri
 	cmd := exec.CommandContext(ctx, agyPath,
 		"--conversation", convID,
 		"--print", "ok",
+		"--print-timeout", "15s",
 		"--log-file", logFile,
 	)
 	cmd.Stdout = nil
@@ -76,28 +77,15 @@ func (s *Scanner) backfillConversation(convID string, workspaces map[string]stri
 		return 0, fmt.Errorf("port discovery: %w", err)
 	}
 
-	n := 0
-	summaries, err := getAllTrajectories(port)
-	if err != nil {
-		log.Printf("[agy backfill] getAllTrajectories on port %d failed: %v", port, err)
-	} else if len(summaries) == 0 {
-		// No trajectories listed — try using convID as cascade_id directly
-		count, scanErr := s.scanTrajectory(port, convID, workspaces, usageChan)
-		if scanErr != nil {
-			log.Printf("[agy backfill] direct scanTrajectory(%s) failed: %v", convID, scanErr)
-		} else {
-			n = count
-		}
-	} else {
-		for cascadeID := range summaries {
-			count, scanErr := s.scanTrajectory(port, cascadeID, workspaces, usageChan)
-			if scanErr != nil {
-				continue
-			}
-			n += count
-		}
+	// Small delay for conversation to finish loading after HTTP server starts.
+	time.Sleep(500 * time.Millisecond)
+
+	n, scanErr := s.scanTrajectory(port, convID, workspaces, usageChan)
+	if scanErr != nil {
+		log.Printf("[agy backfill] scanTrajectory(%s) on port %d: %v", convID, port, scanErr)
 	}
 
+	cmd.Process.Kill()
 	cmd.Wait()
 	return n, nil
 }
