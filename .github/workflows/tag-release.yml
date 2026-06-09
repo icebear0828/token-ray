@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Resolve release version
         id: version
@@ -80,24 +80,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           target_sha="$(git rev-parse HEAD)"
+          # No --event filter: accept push-triggered runs and workflow_dispatch
+          # reruns used to recover from dropped push events.
           conclusion="$(gh run list \
             --workflow Test \
             --branch main \
             --commit "$target_sha" \
-            --event push \
             --status completed \
             --json conclusion \
-            --jq '.[0].conclusion // ""' \
-            --limit 1)"
+            --jq '[.[] | select(.conclusion == "success")][0].conclusion // .[0].conclusion // ""' \
+            --limit 10)"
           url="$(gh run list \
             --workflow Test \
             --branch main \
             --commit "$target_sha" \
-            --event push \
             --status completed \
-            --json url \
-            --jq '.[0].url // ""' \
-            --limit 1)"
+            --json url,conclusion \
+            --jq '[.[] | select(.conclusion == "success")][0].url // .[0].url // ""' \
+            --limit 10)"
 
           if [[ "$conclusion" != "success" ]]; then
             echo "No successful Test workflow found for main commit $target_sha."
