@@ -66,6 +66,18 @@
       "cache_creation_price_per_m": 3.75,
       "output_price_per_m": 15.00
     },
+    "claude-fable-5": {
+      "input_price_per_m": 10.00,
+      "cached_price_per_m": 1.00,
+      "cache_creation_price_per_m": 12.50,
+      "output_price_per_m": 50.00
+    },
+    "claude-opus-4-8": {
+      "input_price_per_m": 5.00,
+      "cached_price_per_m": 0.50,
+      "cache_creation_price_per_m": 6.25,
+      "output_price_per_m": 25.00
+    },
     "claude-opus-4-7": {
       "input_price_per_m": 5.00,
       "cached_price_per_m": 0.50,
