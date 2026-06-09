@@ -59,8 +59,34 @@ export interface ProjectStat {
   cache_hit_rate: number;
 }
 
+export interface DailyCostBucket {
+  date: string;
+  cost: number;
+}
+
+export interface CalendarHeatmapBucket {
+  date: string;
+  tokens: number;
+  cost: number;
+  events: number;
+}
+
+export interface ToolShareBucket {
+  source: string;
+  tokens: number;
+  total_cost: number;
+  events: number;
+}
+
+export interface DashboardCharts {
+  daily_costs: DailyCostBucket[];
+  calendar_heatmap: CalendarHeatmapBucket[];
+  tool_share: ToolShareBucket[];
+}
+
 export interface DashboardData {
   periods: PeriodStats[];
+  charts: DashboardCharts;
   sources: SourceStats[];
   devices: DeviceStats[];
   projects?: ProjectStat[];
@@ -73,6 +99,10 @@ export const normalizeDashboardData = (raw: unknown): DashboardData => {
   const sources = Array.isArray(root.sources) ? root.sources : [];
   const devices = Array.isArray(root.devices) ? root.devices : [];
   const projects = Array.isArray(root.projects) ? root.projects : [];
+  const charts = asRecord(root.charts);
+  const dailyCosts = Array.isArray(charts.daily_costs) ? charts.daily_costs : [];
+  const calendarHeatmap = Array.isArray(charts.calendar_heatmap) ? charts.calendar_heatmap : [];
+  const toolShare = Array.isArray(charts.tool_share) ? charts.tool_share : [];
 
   return {
     periods: periods.map((period) => {
@@ -87,6 +117,33 @@ export const normalizeDashboardData = (raw: unknown): DashboardData => {
         cache_hit_rate: num(p.cache_hit_rate),
       };
     }),
+    charts: {
+      daily_costs: dailyCosts.map((bucket) => {
+        const b = asRecord(bucket);
+        return {
+          date: text(b.date),
+          cost: num(b.cost),
+        };
+      }),
+      calendar_heatmap: calendarHeatmap.map((bucket) => {
+        const b = asRecord(bucket);
+        return {
+          date: text(b.date),
+          tokens: num(b.tokens),
+          cost: num(b.cost),
+          events: num(b.events),
+        };
+      }),
+      tool_share: toolShare.map((bucket) => {
+        const b = asRecord(bucket);
+        return {
+          source: text(b.source, 'Unknown'),
+          tokens: num(b.tokens),
+          total_cost: num(b.total_cost),
+          events: num(b.events),
+        };
+      }),
+    },
     sources: sources.map((source) => {
       const src = asRecord(source);
       const models = Array.isArray(src.models) ? src.models : [];

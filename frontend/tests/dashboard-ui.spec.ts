@@ -79,6 +79,59 @@ test('dashboard shows cache hit rate in stats tables', async ({ page }) => {
   await expect(page.getByText('25.0%').first()).toBeVisible();
 });
 
+test('dashboard shows cost intelligence charts', async ({ page }) => {
+  const start = new Date('2026-05-10T00:00:00Z');
+  const dateAt = (offset: number) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + offset);
+    return date.toISOString().slice(0, 10);
+  };
+  const dailyCosts = Array.from({ length: 30 }, (_, index) => ({
+    date: dateAt(index),
+    cost: index === 28 ? 2.5 : index === 29 ? 12.34 : 0,
+  }));
+  const calendarHeatmap = Array.from({ length: 30 }, (_, index) => ({
+    date: dateAt(index),
+    tokens: index === 28 ? 550 : index === 29 ? 1050 : 0,
+    cost: index === 28 ? 2.5 : index === 29 ? 12.34 : 0,
+    events: index >= 28 ? 1 : 0,
+  }));
+
+  await page.route('**/api/stats?*', async (route) => {
+    await fulfillJSON(route, {
+      periods,
+      charts: {
+        daily_costs: dailyCosts,
+        calendar_heatmap: calendarHeatmap,
+        tool_share: [
+          { source: 'Codex', tokens: 1050, total_cost: 12.34, events: 1 },
+          { source: 'Claude Code', tokens: 550, total_cost: 2.5, events: 1 },
+        ],
+      },
+      sources: [],
+      devices: [{ id: 'local', display_name: 'local' }],
+      projects: [],
+      is_paused: false,
+    });
+  });
+  await page.route('**/api/lan/scan', fulfillEmptyLANScan);
+
+  await page.goto('/');
+
+  await expect(page.getByRole('heading', { name: '成本洞察' })).toBeVisible();
+  await expect(page.getByText('30天每日成本')).toBeVisible();
+  await expect(page.getByText('日历热力图')).toBeVisible();
+  await expect(page.getByText('工具 Token 占比')).toBeVisible();
+  await expect(page.getByTestId('daily-cost-bar')).toHaveCount(30);
+  const zeroCostBar = page.getByTestId('daily-cost-bar').first();
+  await expect(zeroCostBar).toHaveCSS('height', '0px');
+  await expect(zeroCostBar).toHaveCSS('border-top-width', '0px');
+  await expect(page.getByTestId('heatmap-cell')).toHaveCount(30);
+  await expect(page.getByText('$12.34').first()).toBeVisible();
+  await expect(page.getByText('Codex', { exact: true })).toBeVisible();
+  await expect(page.getByText('65.6%')).toBeVisible();
+});
+
 test('dashboard period cards show raw input tokens without subtracting cache', async ({ page }) => {
 	await page.route('**/api/stats?*', async (route) => {
 		await fulfillJSON(route, {

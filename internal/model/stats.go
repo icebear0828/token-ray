@@ -44,6 +44,35 @@ type PeriodCost struct {
 	CacheHitRate        float64 `json:"cache_hit_rate"`
 }
 
+// DailyCostBucket represents one calendar day of spend.
+type DailyCostBucket struct {
+	Date string  `json:"date"`
+	Cost float64 `json:"cost"`
+}
+
+// CalendarHeatmapBucket represents one GitHub-style calendar heatmap cell.
+type CalendarHeatmapBucket struct {
+	Date   string  `json:"date"`
+	Tokens int     `json:"tokens"`
+	Cost   float64 `json:"cost"`
+	Events int     `json:"events"`
+}
+
+// ToolShareBucket represents token share by source/tool.
+type ToolShareBucket struct {
+	Source    string  `json:"source"`
+	Tokens    int     `json:"tokens"`
+	TotalCost float64 `json:"total_cost"`
+	Events    int     `json:"events"`
+}
+
+// StatsCharts groups chart-ready aggregates for the dashboard summary.
+type StatsCharts struct {
+	DailyCosts      []DailyCostBucket       `json:"daily_costs"`
+	CalendarHeatmap []CalendarHeatmapBucket `json:"calendar_heatmap"`
+	ToolShare       []ToolShareBucket       `json:"tool_share"`
+}
+
 // DeviceInfo represents a device with its display name.
 type DeviceInfo struct {
 	ID          string `json:"id"`
@@ -97,6 +126,7 @@ func CacheHitRatePercent(inputTokens int, cachedTokens int) float64 {
 // StatsResponse is the full stats API response.
 type StatsResponse struct {
 	Periods  []PeriodCost  `json:"periods"`
+	Charts   StatsCharts   `json:"charts"`
 	Sources  []SourceStats `json:"sources"`
 	Devices  []DeviceInfo  `json:"devices"`
 	Projects []ProjectStat `json:"projects"`

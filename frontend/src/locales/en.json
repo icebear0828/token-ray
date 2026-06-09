@@ -90,5 +90,15 @@
   "projects": "PROJECT STATS",
   "project": "Project",
   "tokens": "Tokens",
+  "costIntelligence": "COST INTELLIGENCE",
+  "dailyCost30d": "30D DAILY COST",
+  "calendarHeatmap": "CALENDAR HEATMAP",
+  "toolTokenShare": "TOOL TOKEN SHARE",
+  "total30dCost": "30D TOTAL",
+  "peakDailyCost": "PEAK DAY",
+  "maxDayTokens": "MAX DAY TOKENS",
+  "less": "LESS",
+  "more": "MORE",
+  "noChartData": "NO CHART DATA",
   "total": "TOTAL"
 }

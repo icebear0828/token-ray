@@ -90,5 +90,15 @@
   "projects": "项目统计",
   "project": "项目名称",
   "tokens": "Tokens消耗",
+  "costIntelligence": "成本洞察",
+  "dailyCost30d": "30天每日成本",
+  "calendarHeatmap": "日历热力图",
+  "toolTokenShare": "工具 Token 占比",
+  "total30dCost": "30天总成本",
+  "peakDailyCost": "峰值日成本",
+  "maxDayTokens": "单日最高 Tokens",
+  "less": "少",
+  "more": "多",
+  "noChartData": "暂无图表数据",
   "total": "总计"
 }

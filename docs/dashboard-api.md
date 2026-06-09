@@ -51,8 +51,34 @@ interface ProjectStat {
   cache_hit_rate: number
 }
 
+interface DailyCostBucket {
+  date: string
+  cost: number
+}
+
+interface CalendarHeatmapBucket {
+  date: string
+  tokens: number
+  cost: number
+  events: number
+}
+
+interface ToolShareBucket {
+  source: string
+  tokens: number
+  total_cost: number
+  events: number
+}
+
+interface StatsCharts {
+  daily_costs: DailyCostBucket[]
+  calendar_heatmap: CalendarHeatmapBucket[]
+  tool_share: ToolShareBucket[]
+}
+
 interface StatsResponse {
   periods: PeriodCost[]
+  charts: StatsCharts
   sources: SourceStats[]
   projects: ProjectStat[]
   devices: Array<{ id: string; display_name: string }>
@@ -81,7 +107,7 @@ GET /api/stats?device={device_id}&source={source_name}&detail={full|summary|deta
 
 `source_name` supports the same source names shown in the dashboard, including `Claude Code`, `Gemini CLI`, `Codex`, and `Antigravity`.
 
-`detail` is optional. Omit it, or use `full`, to return the complete legacy payload. Use `summary` for a lightweight response containing periods, source totals, devices, and pause state. Use `details` for model/project details that can be loaded after the summary.
+`detail` is optional. Omit it, or use `full`, to return the complete legacy payload plus chart aggregates. Use `summary` for a lightweight response containing periods, chart aggregates, source totals, devices, and pause state. Use `details` for model/project details that can be loaded after the summary.
 
 Response:
 ```json
@@ -97,6 +123,17 @@ Response:
       "cache_hit_rate": 25.0
     }
   ],
+  "charts": {
+    "daily_costs": [
+      { "date": "2026-06-08", "cost": 0.45 }
+    ],
+    "calendar_heatmap": [
+      { "date": "2026-06-08", "tokens": 17000, "cost": 0.45, "events": 10 }
+    ],
+    "tool_share": [
+      { "source": "Claude Code", "tokens": 17000, "total_cost": 0.45, "events": 10 }
+    ]
+  },
   "sources": [
     {
       "name": "Claude Code",
@@ -139,6 +176,8 @@ Response:
 ```
 
 `cache_hit_rate` is `cached_tokens / input_tokens * 100`, bounded to `0..100`.
+
+`charts.daily_costs` and `charts.calendar_heatmap` are fixed 30-day UTC calendar-day series in ascending date order. `charts.tool_share` is sorted by total tokens descending and uses `input_tokens + output_tokens` as the token total.
 
 ### 2. LAN Runtime Status
 ```
