@@ -67,14 +67,14 @@ function DailyCostChart({ buckets, t }: { buckets: DailyCostBucket[]; t: TFuncti
       <div className="flex h-44 items-end gap-[3px] border-b-[3px] border-l-[3px] border-[#000000] px-2 pt-2">
         {buckets.map((bucket) => {
           const cost = num(bucket.cost);
-          const height = maxCost > 0 ? Math.max(4, (cost / maxCost) * 100) : 0;
+          const height = cost > 0 && maxCost > 0 ? Math.max(4, (cost / maxCost) * 100) : 0;
           return (
             <div key={bucket.date} className="flex h-full min-w-0 flex-1 items-end">
               <div
                 data-testid="daily-cost-bar"
                 aria-label={`${bucket.date} ${fmtCost(cost)}`}
                 title={`${bucket.date} ${fmtCost(cost)}`}
-                className="w-full border-x-[1px] border-t-[3px] border-[#000000] bg-[#000000]"
+                className={`w-full ${height > 0 ? 'border-x-[1px] border-t-[3px] border-[#000000] bg-[#000000]' : ''}`}
                 style={{ height: `${height}%` }}
               ></div>
             </div>

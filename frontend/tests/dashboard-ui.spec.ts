@@ -123,6 +123,9 @@ test('dashboard shows cost intelligence charts', async ({ page }) => {
   await expect(page.getByText('日历热力图')).toBeVisible();
   await expect(page.getByText('工具 Token 占比')).toBeVisible();
   await expect(page.getByTestId('daily-cost-bar')).toHaveCount(30);
+  const zeroCostBar = page.getByTestId('daily-cost-bar').first();
+  await expect(zeroCostBar).toHaveCSS('height', '0px');
+  await expect(zeroCostBar).toHaveCSS('border-top-width', '0px');
   await expect(page.getByTestId('heatmap-cell')).toHaveCount(30);
   await expect(page.getByText('$12.34').first()).toBeVisible();
   await expect(page.getByText('Codex', { exact: true })).toBeVisible();
