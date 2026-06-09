@@ -73,6 +73,18 @@ func TestEmbeddedPricingMatchesOfficialRates(t *testing.T) {
 			CacheCreationPricePerM: 3.75,
 			OutputPricePerM:        15.00,
 		},
+		"claude-fable-5": {
+			InputPricePerM:         10.00,
+			CachedPricePerM:        1.00,
+			CacheCreationPricePerM: 12.50,
+			OutputPricePerM:        50.00,
+		},
+		"claude-opus-4-8": {
+			InputPricePerM:         5.00,
+			CachedPricePerM:        0.50,
+			CacheCreationPricePerM: 6.25,
+			OutputPricePerM:        25.00,
+		},
 		"claude-opus-4-7": {
 			InputPricePerM:         5.00,
 			CachedPricePerM:        0.50,

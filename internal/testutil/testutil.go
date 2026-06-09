@@ -15,6 +15,18 @@ import (
 // PricingJSON is a minimal pricing table covering the models used in tests.
 const PricingJSON = `{
   "models": {
+    "claude-fable-5": {
+      "input_price_per_m": 10,
+      "cached_price_per_m": 1,
+      "cache_creation_price_per_m": 12.5,
+      "output_price_per_m": 50
+    },
+    "claude-opus-4-8": {
+      "input_price_per_m": 5,
+      "cached_price_per_m": 0.5,
+      "cache_creation_price_per_m": 6.25,
+      "output_price_per_m": 25
+    },
     "claude-opus-4-7": {
       "input_price_per_m": 5,
       "cached_price_per_m": 0.5,
