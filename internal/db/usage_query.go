@@ -176,6 +176,111 @@ func (d *DB) QueryTokenSourceSummaries(since time.Time, deviceID string) ([]mode
 	return summaries, rows.Err()
 }
 
+// QueryDailyCostBuckets returns non-empty daily cost buckets in the given date window.
+func (d *DB) QueryDailyCostBuckets(startInclusive time.Time, endExclusive time.Time, deviceID string, source string) ([]model.DailyCostBucket, error) {
+	query := `SELECT date(log_timestamp), COALESCE(SUM(cost_usd), 0)
+		FROM usage_records
+		WHERE ` + activeUsagePredicate + ` AND julianday(log_timestamp) >= julianday(?) AND julianday(log_timestamp) < julianday(?)`
+	args := []interface{}{formatLogTimestamp(startInclusive), formatLogTimestamp(endExclusive)}
+
+	if deviceID != "" && deviceID != "all" {
+		query += " AND device_id = ?"
+		args = append(args, deviceID)
+	}
+	if source != "" {
+		query += " AND source = ?"
+		args = append(args, source)
+	}
+
+	query += " GROUP BY date(log_timestamp) ORDER BY date(log_timestamp)"
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	buckets := []model.DailyCostBucket{}
+	for rows.Next() {
+		var bucket model.DailyCostBucket
+		if err := rows.Scan(&bucket.Date, &bucket.Cost); err != nil {
+			return nil, err
+		}
+		buckets = append(buckets, bucket)
+	}
+	return buckets, rows.Err()
+}
+
+// QueryCalendarHeatmapBuckets returns non-empty daily token buckets for a calendar heatmap.
+func (d *DB) QueryCalendarHeatmapBuckets(startInclusive time.Time, endExclusive time.Time, deviceID string, source string) ([]model.CalendarHeatmapBucket, error) {
+	query := `SELECT date(log_timestamp), COALESCE(SUM(input_tokens + output_tokens), 0), COALESCE(SUM(cost_usd), 0), COUNT(*)
+		FROM usage_records
+		WHERE ` + activeUsagePredicate + ` AND julianday(log_timestamp) >= julianday(?) AND julianday(log_timestamp) < julianday(?)`
+	args := []interface{}{formatLogTimestamp(startInclusive), formatLogTimestamp(endExclusive)}
+
+	if deviceID != "" && deviceID != "all" {
+		query += " AND device_id = ?"
+		args = append(args, deviceID)
+	}
+	if source != "" {
+		query += " AND source = ?"
+		args = append(args, source)
+	}
+
+	query += " GROUP BY date(log_timestamp) ORDER BY date(log_timestamp)"
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	buckets := []model.CalendarHeatmapBucket{}
+	for rows.Next() {
+		var bucket model.CalendarHeatmapBucket
+		if err := rows.Scan(&bucket.Date, &bucket.Tokens, &bucket.Cost, &bucket.Events); err != nil {
+			return nil, err
+		}
+		buckets = append(buckets, bucket)
+	}
+	return buckets, rows.Err()
+}
+
+// QueryToolShareBuckets returns token totals by source/tool in the given date window.
+func (d *DB) QueryToolShareBuckets(startInclusive time.Time, endExclusive time.Time, deviceID string, source string) ([]model.ToolShareBucket, error) {
+	query := `SELECT source, COALESCE(SUM(input_tokens + output_tokens), 0), COALESCE(SUM(cost_usd), 0), COUNT(*)
+		FROM usage_records
+		WHERE ` + activeUsagePredicate + ` AND julianday(log_timestamp) >= julianday(?) AND julianday(log_timestamp) < julianday(?)`
+	args := []interface{}{formatLogTimestamp(startInclusive), formatLogTimestamp(endExclusive)}
+
+	if deviceID != "" && deviceID != "all" {
+		query += " AND device_id = ?"
+		args = append(args, deviceID)
+	}
+	if source != "" {
+		query += " AND source = ?"
+		args = append(args, source)
+	}
+
+	query += " GROUP BY source ORDER BY COALESCE(SUM(input_tokens + output_tokens), 0) DESC, source ASC"
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	buckets := []model.ToolShareBucket{}
+	for rows.Next() {
+		var bucket model.ToolShareBucket
+		if err := rows.Scan(&bucket.Source, &bucket.Tokens, &bucket.TotalCost, &bucket.Events); err != nil {
+			return nil, err
+		}
+		buckets = append(buckets, bucket)
+	}
+	return buckets, rows.Err()
+}
+
 // QueryStatsSince returns per-model stats since the given time, sorted by cost descending.
 // QueryStatsSince returns per-model stats since the given time, sorted by cost descending.
 func (d *DB) QueryStatsSince(since time.Time, deviceID string, source string) ([]ModelStat, error) {

@@ -174,6 +174,12 @@ func TestAPIStatsDetailModes(t *testing.T) {
 	if len(summary.Sources) != 1 || len(summary.Sources[0].Models) != 0 || len(summary.Projects) != 0 {
 		t.Fatalf("summary should include source totals only, got %+v", summary)
 	}
+	if len(summary.Charts.DailyCosts) != 30 || len(summary.Charts.CalendarHeatmap) != 30 {
+		t.Fatalf("summary should include cost intelligence charts, got %+v", summary.Charts)
+	}
+	if len(summary.Charts.ToolShare) != 1 || summary.Charts.ToolShare[0].Source != "Codex" || summary.Charts.ToolShare[0].Tokens != 2300 {
+		t.Fatalf("summary should include Codex token-share chart data, got %+v", summary.Charts.ToolShare)
+	}
 
 	detailsResp, err := http.Get(srv.URL + "/api/stats?device=all&source=Codex&detail=details")
 	if err != nil {
@@ -189,6 +195,9 @@ func TestAPIStatsDetailModes(t *testing.T) {
 	}
 	if len(details.Periods) != 0 || len(details.Devices) != 0 {
 		t.Fatalf("details should omit summary periods/devices, got %+v", details)
+	}
+	if len(details.Charts.DailyCosts) != 0 || len(details.Charts.CalendarHeatmap) != 0 || len(details.Charts.ToolShare) != 0 {
+		t.Fatalf("details should omit cost intelligence charts, got %+v", details.Charts)
 	}
 	if len(details.Sources) != 1 || len(details.Sources[0].Models) != 1 || len(details.Projects) != 1 {
 		t.Fatalf("expected details models/projects, got %+v", details)

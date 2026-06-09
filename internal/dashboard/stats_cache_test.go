@@ -19,6 +19,11 @@ func TestStatsCacheReusesFreshValueAndReturnsCopies(t *testing.T) {
 		builds++
 		return &model.StatsResponse{
 			Periods: []model.PeriodCost{{Label: "ALL", InputTokens: builds}},
+			Charts: model.StatsCharts{
+				DailyCosts:      []model.DailyCostBucket{{Date: "2026-06-08", Cost: 1.25}},
+				CalendarHeatmap: []model.CalendarHeatmapBucket{{Date: "2026-06-08", Tokens: 1050}},
+				ToolShare:       []model.ToolShareBucket{{Source: "Codex", Tokens: 1050}},
+			},
 			Sources: []model.SourceStats{{
 				Name: "Codex",
 				Models: []model.ModelStats{{
@@ -36,6 +41,9 @@ func TestStatsCacheReusesFreshValueAndReturnsCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 	first.Periods[0].Label = "mutated"
+	first.Charts.DailyCosts[0].Date = "mutated"
+	first.Charts.CalendarHeatmap[0].Date = "mutated"
+	first.Charts.ToolShare[0].Source = "mutated"
 	first.Sources[0].Models[0].Model = "mutated"
 
 	second, err := cache.Get(key, build)
@@ -46,7 +54,7 @@ func TestStatsCacheReusesFreshValueAndReturnsCopies(t *testing.T) {
 	if builds != 1 {
 		t.Fatalf("expected one build within TTL, got %d", builds)
 	}
-	if second.Periods[0].Label != "ALL" || second.Sources[0].Models[0].Model != "gpt-5.5" {
+	if second.Periods[0].Label != "ALL" || second.Sources[0].Models[0].Model != "gpt-5.5" || second.Charts.DailyCosts[0].Date != "2026-06-08" || second.Charts.CalendarHeatmap[0].Date != "2026-06-08" || second.Charts.ToolShare[0].Source != "Codex" {
 		t.Fatalf("expected cached copies to be isolated from caller mutation, got %+v", second)
 	}
 }

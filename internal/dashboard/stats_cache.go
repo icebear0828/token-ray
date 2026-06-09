@@ -102,6 +102,11 @@ func cloneStatsResponse(stats *model.StatsResponse) *model.StatsResponse {
 	}
 	clone := *stats
 	clone.Periods = append([]model.PeriodCost(nil), stats.Periods...)
+	clone.Charts = model.StatsCharts{
+		DailyCosts:      append([]model.DailyCostBucket(nil), stats.Charts.DailyCosts...),
+		CalendarHeatmap: append([]model.CalendarHeatmapBucket(nil), stats.Charts.CalendarHeatmap...),
+		ToolShare:       append([]model.ToolShareBucket(nil), stats.Charts.ToolShare...),
+	}
 	clone.Devices = append([]model.DeviceInfo(nil), stats.Devices...)
 	clone.Projects = append([]model.ProjectStat(nil), stats.Projects...)
 	clone.Sources = make([]model.SourceStats, len(stats.Sources))

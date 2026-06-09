@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { type TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { LazyBlockFallback, LazyModalFallback } from "./components/LoadingFallbacks";
@@ -7,17 +8,192 @@ import {
   mergeDashboardDetails,
   mergeSummaryWithPreviousDetails,
   normalizeDashboardData,
+  type CalendarHeatmapBucket,
   type DashboardData,
+  type DashboardCharts,
   type DeviceStats,
+  type DailyCostBucket,
   type PeriodStats,
   type SourceModelStats,
   type SourceStats,
+  type ToolShareBucket,
 } from "./dashboardData";
 import { fmt, fmtCost, fmtPercent, num, text } from "./format";
 import { wailsWindow } from "./wails";
 
 const SettingsModal = lazy(() => import("./SettingsModal"));
 const Radar = lazy(() => import("./components/Radar"));
+
+const dateShortLabel = (date: string) => {
+  if (date.length >= 10) {
+    return date.slice(5, 10).replace('-', '/');
+  }
+  return date;
+};
+
+const weekdayIndexUTC = (date: string) => {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getUTCDay();
+};
+
+const heatmapLevel = (tokens: number, maxTokens: number) => {
+  if (tokens <= 0 || maxTokens <= 0) return 0;
+  const ratio = tokens / maxTokens;
+  if (ratio < 0.34) return 1;
+  if (ratio < 0.67) return 2;
+  return 3;
+};
+
+const heatmapClassName = (level: number) => {
+  if (level === 3) return 'bg-[#000000]';
+  if (level === 2) return 'bg-[#888888]';
+  if (level === 1) return 'bg-[#CCCCCC]';
+  return 'bg-[#FFFFFF]';
+};
+
+function DailyCostChart({ buckets, t }: { buckets: DailyCostBucket[]; t: TFunction }) {
+  const maxCost = Math.max(0, ...buckets.map((bucket) => num(bucket.cost)));
+  const totalCost = buckets.reduce((sum, bucket) => sum + num(bucket.cost), 0);
+
+  return (
+    <article className="border-[5px] border-[#000000] bg-[#FFFFFF] p-4 sm:p-5">
+      <div className="mb-4 flex items-start justify-between gap-4 border-b-[3px] border-[#000000] pb-3">
+        <h3 className="font-display text-xl sm:text-2xl uppercase leading-none">{t('dailyCost30d')}</h3>
+        <div className="text-right font-mono text-xs uppercase">
+          <div>{t('total30dCost')}</div>
+          <div className="text-lg leading-none">{fmtCost(totalCost)}</div>
+        </div>
+      </div>
+      <div className="flex h-44 items-end gap-[3px] border-b-[3px] border-l-[3px] border-[#000000] px-2 pt-2">
+        {buckets.map((bucket) => {
+          const cost = num(bucket.cost);
+          const height = maxCost > 0 ? Math.max(4, (cost / maxCost) * 100) : 0;
+          return (
+            <div key={bucket.date} className="flex h-full min-w-0 flex-1 items-end">
+              <div
+                data-testid="daily-cost-bar"
+                aria-label={`${bucket.date} ${fmtCost(cost)}`}
+                title={`${bucket.date} ${fmtCost(cost)}`}
+                className="w-full border-x-[1px] border-t-[3px] border-[#000000] bg-[#000000]"
+                style={{ height: `${height}%` }}
+              ></div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex items-center justify-between font-mono text-xs">
+        <span>{dateShortLabel(buckets[0]?.date ?? '')}</span>
+        <span>{t('peakDailyCost')}: {fmtCost(maxCost)}</span>
+        <span>{dateShortLabel(buckets[buckets.length - 1]?.date ?? '')}</span>
+      </div>
+    </article>
+  );
+}
+
+function CalendarHeatmap({ buckets, t }: { buckets: CalendarHeatmapBucket[]; t: TFunction }) {
+  const maxTokens = Math.max(0, ...buckets.map((bucket) => num(bucket.tokens)));
+  const firstWeekday = weekdayIndexUTC(buckets[0]?.date ?? '');
+  const columns = Math.max(1, Math.ceil((firstWeekday + buckets.length) / 7));
+
+  return (
+    <article className="border-[5px] border-[#000000] bg-[#FFFFFF] p-4 sm:p-5">
+      <div className="mb-4 flex items-start justify-between gap-4 border-b-[3px] border-[#000000] pb-3">
+        <h3 className="font-display text-xl sm:text-2xl uppercase leading-none">{t('calendarHeatmap')}</h3>
+        <div className="text-right font-mono text-xs uppercase">
+          <div>{t('maxDayTokens')}</div>
+          <div className="text-lg leading-none">{fmt(maxTokens)}</div>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <div
+          className="grid w-fit gap-[4px]"
+          style={{
+            gridTemplateColumns: `repeat(${columns}, 16px)`,
+            gridTemplateRows: 'repeat(7, 16px)',
+          }}
+        >
+          {buckets.map((bucket, index) => {
+            const position = firstWeekday + index;
+            const level = heatmapLevel(num(bucket.tokens), maxTokens);
+            return (
+              <div
+                key={bucket.date}
+                data-testid="heatmap-cell"
+                aria-label={`${bucket.date} ${fmt(bucket.tokens)} tokens`}
+                title={`${bucket.date} / ${fmt(bucket.tokens)} tokens / ${fmtCost(bucket.cost)}`}
+                className={`h-4 w-4 border-[2px] border-[#000000] ${heatmapClassName(level)}`}
+                style={{
+                  gridColumn: Math.floor(position / 7) + 1,
+                  gridRow: (position % 7) + 1,
+                }}
+              ></div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2 font-mono text-xs uppercase">
+        <span>{t('less')}</span>
+        <span className="h-3 w-3 border-[2px] border-[#000000] bg-[#FFFFFF]"></span>
+        <span className="h-3 w-3 border-[2px] border-[#000000] bg-[#CCCCCC]"></span>
+        <span className="h-3 w-3 border-[2px] border-[#000000] bg-[#888888]"></span>
+        <span className="h-3 w-3 border-[2px] border-[#000000] bg-[#000000]"></span>
+        <span>{t('more')}</span>
+      </div>
+    </article>
+  );
+}
+
+function ToolShareChart({ buckets, t }: { buckets: ToolShareBucket[]; t: TFunction }) {
+  const totalTokens = buckets.reduce((sum, bucket) => sum + num(bucket.tokens), 0);
+
+  return (
+    <article className="border-[5px] border-[#000000] bg-[#FFFFFF] p-4 sm:p-5">
+      <div className="mb-4 flex items-start justify-between gap-4 border-b-[3px] border-[#000000] pb-3">
+        <h3 className="font-display text-xl sm:text-2xl uppercase leading-none">{t('toolTokenShare')}</h3>
+        <div className="text-right font-mono text-xs uppercase">
+          <div>{t('totalTokens')}</div>
+          <div className="text-lg leading-none">{fmt(totalTokens)}</div>
+        </div>
+      </div>
+      <div className="flex flex-col gap-4">
+        {buckets.length === 0 && (
+          <div className="border-[3px] border-[#000000] bg-[#F0F0F0] p-3 font-mono text-xs uppercase">{t('noChartData')}</div>
+        )}
+        {buckets.map((bucket) => {
+          const share = totalTokens > 0 ? (num(bucket.tokens) / totalTokens) * 100 : 0;
+          return (
+            <div key={bucket.source} className="font-mono text-xs sm:text-sm">
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <span className="font-bold">{bucket.source}</span>
+                <span>{fmt(bucket.tokens)} / {fmtPercent(share)}</span>
+              </div>
+              <div className="h-7 border-[3px] border-[#000000] bg-[#FFFFFF]">
+                <div className="h-full bg-[#000000]" style={{ width: `${share}%` }}></div>
+              </div>
+              <div className="mt-1 text-xs uppercase">{t('events')}: {bucket.events} / {t('subtotal')}: {fmtCost(bucket.total_cost)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
+function CostIntelligenceSection({ charts, t }: { charts: DashboardCharts; t: TFunction }) {
+  return (
+    <section className="mb-12 md:mb-20">
+      <div className="mb-5 border-b-[5px] border-[#000000] pb-3">
+        <h2 className="font-display text-3xl sm:text-4xl md:text-5xl uppercase leading-none">{t('costIntelligence')}</h2>
+      </div>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(260px,0.8fr)_minmax(280px,0.9fr)]">
+        <DailyCostChart buckets={charts.daily_costs} t={t} />
+        <CalendarHeatmap buckets={charts.calendar_heatmap} t={t} />
+        <ToolShareChart buckets={charts.tool_share} t={t} />
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<DashboardData | null>(null);
@@ -151,6 +327,7 @@ export default function App() {
   );
 
   const { periods = [], sources = [] } = data;
+  const hasCostIntelligence = data.charts.daily_costs.length > 0 || data.charts.calendar_heatmap.length > 0 || data.charts.tool_share.length > 0;
 
   return (
     <div className={`bg-[#FFFFFF] text-[#000000] min-h-screen px-4 pb-4 sm:px-6 sm:pb-6 md:px-10 md:pb-10 font-sans selection:bg-[#000000] selection:text-[#FFFFFF] ${isDesktop ? 'pt-12' : 'pt-6 md:pt-10'}`}>
@@ -291,6 +468,10 @@ export default function App() {
         })}
         </div>
       </section>
+
+      {hasCostIntelligence && (
+        <CostIntelligenceSection charts={data.charts} t={t} />
+      )}
 
       {/* LAN Radar Component */}
       <Suspense fallback={<LazyBlockFallback />}>

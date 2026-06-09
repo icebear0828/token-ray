@@ -195,6 +195,125 @@ func TestQueryTokenSourceSummaries(t *testing.T) {
 		t.Fatalf("unexpected Codex summary: %+v", summaries[1])
 	}
 }
+
+func TestQueryCostIntelligenceBuckets(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	start := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 0, 30)
+	rows := []struct {
+		usage      model.TokenUsage
+		cost       float64
+		at         time.Time
+		filePath   string
+		deviceID   string
+		superseded bool
+	}{
+		{
+			usage:    model.TokenUsage{Source: "Codex", Model: "gpt-5.5", InputTokens: 9000, CachedTokens: 9000, CacheCreationTokens: 9000, OutputTokens: 9000},
+			cost:     99.00,
+			at:       start.Add(-time.Second),
+			filePath: "/before.jsonl",
+			deviceID: "dev1",
+		},
+		{
+			usage:    model.TokenUsage{Source: "Codex", Model: "gpt-5.5", InputTokens: 100, CachedTokens: 40, CacheCreationTokens: 20, OutputTokens: 10},
+			cost:     1.00,
+			at:       start.Add(2 * time.Hour),
+			filePath: "/codex-early.jsonl",
+			deviceID: "dev1",
+		},
+		{
+			usage:    model.TokenUsage{Source: "Codex", Model: "gpt-5.5", InputTokens: 200, CachedTokens: 80, CacheCreationTokens: 40, OutputTokens: 20},
+			cost:     2.00,
+			at:       end.Add(-2 * time.Hour),
+			filePath: "/codex-late.jsonl",
+			deviceID: "dev1",
+		},
+		{
+			usage:    model.TokenUsage{Source: "Claude Code", Model: "claude-opus-4-7", InputTokens: 500, CachedTokens: 250, CacheCreationTokens: 100, OutputTokens: 50},
+			cost:     3.00,
+			at:       end.Add(-1 * time.Hour),
+			filePath: "/claude-late.jsonl",
+			deviceID: "dev1",
+		},
+		{
+			usage:    model.TokenUsage{Source: "Gemini CLI", Model: "gemini-2.5-pro", InputTokens: 1000, OutputTokens: 100},
+			cost:     5.00,
+			at:       end.Add(-30 * time.Minute),
+			filePath: "/other-device.jsonl",
+			deviceID: "dev2",
+		},
+		{
+			usage:      model.TokenUsage{Source: "Codex", Model: "ignored", InputTokens: 7000, OutputTokens: 700},
+			cost:       7.00,
+			at:         end.Add(-15 * time.Minute),
+			filePath:   "/superseded.jsonl",
+			deviceID:   "dev1",
+			superseded: true,
+		},
+	}
+	for _, row := range rows {
+		if row.superseded {
+			if err := database.RawExec(
+				"INSERT INTO usage_records (log_timestamp, source, model, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, cost_usd, file_path, device_id, superseded) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				row.at.Format(time.RFC3339Nano), row.usage.Source, row.usage.Model, row.usage.InputTokens, row.usage.CachedTokens, row.usage.CacheCreationTokens, row.usage.OutputTokens, row.cost, row.filePath, row.deviceID, 1,
+			); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := database.InsertUsageWithTime(row.usage, row.cost, row.at, row.filePath, row.deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dailyCosts, err := database.QueryDailyCostBuckets(start, end, "dev1", "Codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dailyCosts) != 2 {
+		t.Fatalf("expected two non-empty Codex daily buckets, got %+v", dailyCosts)
+	}
+	if dailyCosts[0].Date != "2026-05-10" || dailyCosts[0].Cost != 1.00 {
+		t.Fatalf("unexpected first daily cost bucket: %+v", dailyCosts[0])
+	}
+	if dailyCosts[1].Date != "2026-06-08" || dailyCosts[1].Cost != 2.00 {
+		t.Fatalf("unexpected second daily cost bucket: %+v", dailyCosts[1])
+	}
+
+	heatmap, err := database.QueryCalendarHeatmapBuckets(start, end, "dev1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(heatmap) != 2 {
+		t.Fatalf("expected two non-empty heatmap buckets, got %+v", heatmap)
+	}
+	if heatmap[0].Date != "2026-05-10" || heatmap[0].Tokens != 110 || heatmap[0].Events != 1 || heatmap[0].Cost != 1.00 {
+		t.Fatalf("unexpected first heatmap bucket: %+v", heatmap[0])
+	}
+	if heatmap[1].Date != "2026-06-08" || heatmap[1].Tokens != 770 || heatmap[1].Events != 2 || heatmap[1].Cost != 5.00 {
+		t.Fatalf("unexpected second heatmap bucket: %+v", heatmap[1])
+	}
+
+	toolShare, err := database.QueryToolShareBuckets(start, end, "dev1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toolShare) != 2 {
+		t.Fatalf("expected two tool-share buckets, got %+v", toolShare)
+	}
+	if toolShare[0].Source != "Claude Code" || toolShare[0].Tokens != 550 || toolShare[0].Events != 1 || toolShare[0].TotalCost != 3.00 {
+		t.Fatalf("unexpected first tool-share bucket: %+v", toolShare[0])
+	}
+	if toolShare[1].Source != "Codex" || toolShare[1].Tokens != 330 || toolShare[1].Events != 2 || toolShare[1].TotalCost != 3.00 {
+		t.Fatalf("unexpected second tool-share bucket: %+v", toolShare[1])
+	}
+}
 func TestQueryStatsSince(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

@@ -21,6 +21,11 @@ func BuildStats(database *db.DB, calc *calculator.Calculator, deviceID string, s
 		return nil, err
 	}
 
+	charts, err := buildCharts(database, now, deviceID, source)
+	if err != nil {
+		return nil, err
+	}
+
 	stats, err := database.QueryStatsSince(time.Time{}, deviceID, source)
 	if err != nil {
 		return nil, err
@@ -39,6 +44,7 @@ func BuildStats(database *db.DB, calc *calculator.Calculator, deviceID string, s
 
 	return &model.StatsResponse{
 		Periods:  periods,
+		Charts:   charts,
 		Sources:  sources,
 		Devices:  deviceInfos,
 		Projects: projects,
@@ -51,6 +57,11 @@ func BuildStatsSummary(database *db.DB, _ *calculator.Calculator, deviceID strin
 	deviceID = normalizeDeviceID(deviceID)
 
 	periods, err := buildPeriodCosts(database, now, deviceID, source)
+	if err != nil {
+		return nil, err
+	}
+
+	charts, err := buildCharts(database, now, deviceID, source)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +94,7 @@ func BuildStatsSummary(database *db.DB, _ *calculator.Calculator, deviceID strin
 
 	return &model.StatsResponse{
 		Periods:  periods,
+		Charts:   charts,
 		Sources:  sources,
 		Devices:  deviceInfos,
 		IsPaused: isPaused,
@@ -157,6 +169,69 @@ func buildPeriodCosts(database *db.DB, now time.Time, deviceID string, source st
 		})
 	}
 	return periods, nil
+}
+
+func buildCharts(database *db.DB, now time.Time, deviceID string, source string) (model.StatsCharts, error) {
+	const chartDays = 30
+
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	start := today.AddDate(0, 0, -(chartDays - 1))
+	end := start.AddDate(0, 0, chartDays)
+
+	dailyCosts, err := database.QueryDailyCostBuckets(start, end, deviceID, source)
+	if err != nil {
+		return model.StatsCharts{}, err
+	}
+	heatmap, err := database.QueryCalendarHeatmapBuckets(start, end, deviceID, source)
+	if err != nil {
+		return model.StatsCharts{}, err
+	}
+	toolShare, err := database.QueryToolShareBuckets(start, end, deviceID, source)
+	if err != nil {
+		return model.StatsCharts{}, err
+	}
+
+	return model.StatsCharts{
+		DailyCosts:      fillDailyCosts(start, chartDays, dailyCosts),
+		CalendarHeatmap: fillCalendarHeatmap(start, chartDays, heatmap),
+		ToolShare:       toolShare,
+	}, nil
+}
+
+func fillDailyCosts(start time.Time, days int, buckets []model.DailyCostBucket) []model.DailyCostBucket {
+	byDate := make(map[string]model.DailyCostBucket, len(buckets))
+	for _, bucket := range buckets {
+		byDate[bucket.Date] = bucket
+	}
+
+	filled := make([]model.DailyCostBucket, 0, days)
+	for offset := 0; offset < days; offset++ {
+		date := start.AddDate(0, 0, offset).Format("2006-01-02")
+		bucket, ok := byDate[date]
+		if !ok {
+			bucket = model.DailyCostBucket{Date: date}
+		}
+		filled = append(filled, bucket)
+	}
+	return filled
+}
+
+func fillCalendarHeatmap(start time.Time, days int, buckets []model.CalendarHeatmapBucket) []model.CalendarHeatmapBucket {
+	byDate := make(map[string]model.CalendarHeatmapBucket, len(buckets))
+	for _, bucket := range buckets {
+		byDate[bucket.Date] = bucket
+	}
+
+	filled := make([]model.CalendarHeatmapBucket, 0, days)
+	for offset := 0; offset < days; offset++ {
+		date := start.AddDate(0, 0, offset).Format("2006-01-02")
+		bucket, ok := byDate[date]
+		if !ok {
+			bucket = model.CalendarHeatmapBucket{Date: date}
+		}
+		filled = append(filled, bucket)
+	}
+	return filled
 }
 
 func buildSourcesFromModelStats(stats []db.ModelStat, calc *calculator.Calculator) []model.SourceStats {
