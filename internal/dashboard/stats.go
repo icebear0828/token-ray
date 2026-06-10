@@ -186,7 +186,7 @@ func buildCharts(database *db.DB, now time.Time, deviceID string, source string)
 	if err != nil {
 		return model.StatsCharts{}, err
 	}
-	toolShare, err := database.QueryToolShareBuckets(start, end, deviceID, source)
+	toolShare, err := database.QueryToolShareBuckets(start, end, deviceID, "")
 	if err != nil {
 		return model.StatsCharts{}, err
 	}

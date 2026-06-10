@@ -175,8 +175,14 @@ func TestBuildStatsSummaryIncludesCostIntelligenceCharts(t *testing.T) {
 	if todayHeatmap == nil || todayHeatmap.Tokens != 1050 || todayHeatmap.Events != 1 || todayHeatmap.Cost != 1.25 {
 		t.Fatalf("expected today Codex heatmap bucket, got %+v", todayHeatmap)
 	}
-	if len(summary.Charts.ToolShare) != 1 || summary.Charts.ToolShare[0].Source != "Codex" || summary.Charts.ToolShare[0].Tokens != 1050 {
-		t.Fatalf("expected Codex-only tool share by total tokens, got %+v", summary.Charts.ToolShare)
+	if len(summary.Charts.ToolShare) != 2 {
+		t.Fatalf("expected 2 tool share buckets, got %+v", summary.Charts.ToolShare)
+	}
+	if summary.Charts.ToolShare[0].Source != "Claude Code" || summary.Charts.ToolShare[0].Tokens != 2100 {
+		t.Fatalf("expected Claude Code as first tool share, got %+v", summary.Charts.ToolShare[0])
+	}
+	if summary.Charts.ToolShare[1].Source != "Codex" || summary.Charts.ToolShare[1].Tokens != 1050 {
+		t.Fatalf("expected Codex as second tool share, got %+v", summary.Charts.ToolShare[1])
 	}
 }
 
