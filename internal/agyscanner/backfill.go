@@ -18,17 +18,21 @@ import (
 
 var logPortRe = regexp.MustCompile(`listening on random port at (\d+) for HTTP$`)
 
-// Backfill resumes each historical agy conversation via `agy --print`,
-// discovers the temporary HTTP port, and scans the trajectory for token data.
+// Backfill resumes historical agy conversations. It first scans transcripts
+// on disk, then falls back to `agy --print` for any remaining conversations.
 // Returns the total number of new records inserted.
 func (s *Scanner) Backfill(usageChan chan<- watcher.TokenUsage) (int, error) {
+	total := 0
+	if n, err := s.ScanTranscripts(usageChan); err == nil {
+		total += n
+	}
+
 	convIDs := s.unscannedConversations()
 	if len(convIDs) == 0 {
-		return 0, nil
+		return total, nil
 	}
 
 	workspaces := s.loadWorkspaces()
-	total := 0
 
 	for i, convID := range convIDs {
 		log.Printf("[agy backfill] (%d/%d) resuming conversation %s", i+1, len(convIDs), convID)

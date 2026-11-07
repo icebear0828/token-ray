@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
-	"strings"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"ai-flight-dashboard/internal/antigravity"
@@ -16,34 +18,41 @@ import (
 )
 
 type Scanner struct {
-	db       *db.DB
-	calc     *calculator.Calculator
-	DeviceID string
-	LogDir   string
-	HistPath string
+	db           *db.DB
+	calc         *calculator.Calculator
+	DeviceID     string
+	LogDir       string
+	HistPath     string
+	BrainDir     string
+	SettingsPath string
 }
 
 func New(database *db.DB, calc *calculator.Calculator, deviceID string) *Scanner {
 	home, _ := os.UserHomeDir()
 	base := filepath.Join(home, ".gemini", "antigravity-cli")
 	return &Scanner{
-		db:       database,
-		calc:     calc,
-		DeviceID: deviceID,
-		LogDir:   filepath.Join(base, "log"),
-		HistPath: filepath.Join(base, "history.jsonl"),
+		db:           database,
+		calc:         calc,
+		DeviceID:     deviceID,
+		LogDir:       filepath.Join(base, "log"),
+		HistPath:     filepath.Join(base, "history.jsonl"),
+		BrainDir:     filepath.Join(base, "brain"),
+		SettingsPath: filepath.Join(base, "settings.json"),
 	}
 }
 
 func (s *Scanner) Scan(usageChan chan<- watcher.TokenUsage) (int, error) {
+	total := 0
+	if n, err := s.ScanTranscripts(usageChan); err == nil {
+		total += n
+	}
+
 	ports := discoverPorts(s.LogDir)
 	if len(ports) == 0 {
-		return 0, nil
+		return total, nil
 	}
 
 	workspaces := s.loadWorkspaces()
-	total := 0
-
 	for _, ap := range ports {
 		summaries, err := getAllTrajectories(ap.Port)
 		if err != nil {
@@ -222,5 +231,150 @@ func (s *Scanner) ScanWithPort(port int, usageChan chan<- watcher.TokenUsage) (i
 		total += n
 	}
 	return total, nil
+}
+
+var modelChangeRe = regexp.MustCompile(`Model Selection` + "`" + ` from (?:None|[^\s` + "`" + `]+) to ([^` + "`" + `\r\n]+)`)
+
+type transcriptEntry struct {
+	StepIndex       int    `json:"step_index"`
+	Type            string `json:"type"`
+	CreatedAt       string `json:"created_at"`
+	InputTokens     int    `json:"input_tokens"`
+	OutputTokens    int    `json:"output_tokens"`
+	CacheReadTokens int    `json:"cache_read_tokens"`
+	Content         string `json:"content"`
+}
+
+func (s *Scanner) loadDefaultModel() string {
+	if s.SettingsPath == "" {
+		return "gemini-3.8-flash"
+	}
+	data, err := os.ReadFile(s.SettingsPath)
+	if err != nil {
+		return "gemini-3.8-flash"
+	}
+	var settings struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(data, &settings); err == nil && settings.Model != "" {
+		normalized := normalizeDisplayName(settings.Model)
+		if normalized != "" {
+			return normalized
+		}
+	}
+	return "gemini-3.8-flash"
+}
+
+func (s *Scanner) ScanTranscripts(usageChan chan<- watcher.TokenUsage) (int, error) {
+	if s.BrainDir == "" {
+		return 0, nil
+	}
+	if _, err := os.Stat(s.BrainDir); os.IsNotExist(err) {
+		return 0, nil
+	}
+
+	workspaces := s.loadWorkspaces()
+	defaultModel := s.loadDefaultModel()
+
+	entries, err := os.ReadDir(s.BrainDir)
+	if err != nil {
+		return 0, err
+	}
+
+	total := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		cascadeID := e.Name()
+		transcriptPath := filepath.Join(s.BrainDir, cascadeID, ".system_generated", "logs", "transcript.jsonl")
+		info, err := os.Stat(transcriptPath)
+		if err != nil || info.Size() == 0 {
+			continue
+		}
+
+		offsetKey := "agy:transcript:" + cascadeID
+		lastOffset, _ := s.db.GetOffset(offsetKey)
+		if info.Size() <= lastOffset {
+			continue
+		}
+
+		n, newOffset, err := s.scanTranscriptFile(transcriptPath, cascadeID, lastOffset, defaultModel, workspaces, usageChan)
+		if err != nil {
+			continue
+		}
+		if newOffset > lastOffset {
+			s.db.SetOffset(offsetKey, newOffset)
+		}
+		total += n
+	}
+	return total, nil
+}
+
+func (s *Scanner) scanTranscriptFile(path, cascadeID string, fromOffset int64, defaultModel string, workspaces map[string]string, usageChan chan<- watcher.TokenUsage) (int, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, fromOffset, err
+	}
+	defer f.Close()
+
+	if fromOffset > 0 {
+		if _, err := f.Seek(fromOffset, io.SeekStart); err != nil {
+			return 0, fromOffset, err
+		}
+	}
+
+	project := watcher.ExtractProjectNameFromCWD(workspaces[cascadeID])
+	currentModel := defaultModel
+	reader := bufio.NewReader(f)
+	currentOffset := fromOffset
+	inserted := 0
+
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if len(line) > 0 && line[len(line)-1] == '\n' {
+			lineLen := int64(len(line))
+			var entry transcriptEntry
+			if err := json.Unmarshal(line, &entry); err == nil {
+				if entry.Type == "USER_INPUT" && entry.Content != "" {
+					if m := modelChangeRe.FindStringSubmatch(entry.Content); len(m) > 1 {
+						if norm := normalizeDisplayName(m[1]); norm != "" {
+							currentModel = norm
+						}
+					}
+				} else if entry.Type == "PLANNER_RESPONSE" && (entry.InputTokens > 0 || entry.OutputTokens > 0) {
+					input := entry.InputTokens
+					cached := entry.CacheReadTokens
+					totalInput := input + cached
+					output := entry.OutputTokens
+					ts := parseTimestamp(entry.CreatedAt)
+					uuid := fmt.Sprintf("agy:%s:%d", cascadeID, entry.StepIndex)
+
+					cost, _ := s.calc.CalculateCost(currentModel, totalInput, cached, 0, output)
+					u := watcher.TokenUsage{
+						Source:       antigravity.Source,
+						Model:        currentModel,
+						Project:      project,
+						InputTokens:  totalInput,
+						CachedTokens: cached,
+						OutputTokens: output,
+						Timestamp:    ts,
+						UUID:         uuid,
+					}
+					if usageChan != nil {
+						usageChan <- u
+					}
+					if err := s.db.InsertUsageWithTime(u, cost, ts, path, s.DeviceID); err == nil {
+						inserted++
+					}
+				}
+			}
+			currentOffset += lineLen
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	return inserted, currentOffset, nil
 }
 
