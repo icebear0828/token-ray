@@ -260,3 +260,54 @@ func TestCurrentRuntimeAssetMatching(t *testing.T) {
 	}
 	t.Logf("Matched asset for %s/%s: %s", runtime.GOOS, runtime.GOARCH, matched.Name)
 }
+
+func TestMatchAsset_IgnoresNonBinaryAssets(t *testing.T) {
+	assets := []updater.Asset{
+		{Name: "ai-flight-dashboard-linux-amd64.sha256", URL: "https://example.com/checksum"},
+		{Name: "SHA256SUMS-linux-amd64.txt", URL: "https://example.com/sums"},
+		{Name: "ai-flight-dashboard-linux-amd64", URL: "https://example.com/bin"},
+	}
+
+	got := updater.MatchAsset(assets, "linux", "amd64")
+	if got == nil || got.Name != "ai-flight-dashboard-linux-amd64" {
+		t.Fatalf("expected raw binary, got %+v", got)
+	}
+}
+
+func TestExtractBinary_PrefersMainExecutable(t *testing.T) {
+	mainContent := []byte("main executable")
+	helperContent := []byte("helper executable")
+
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	_ = tw.WriteHeader(&tar.Header{
+		Name:     "AI Flight Dashboard.app/Contents/MacOS/ai-flight-dashboard Helper",
+		Mode:     0755,
+		Size:     int64(len(helperContent)),
+		Typeflag: tar.TypeReg,
+	})
+	_, _ = tw.Write(helperContent)
+	_ = tw.WriteHeader(&tar.Header{
+		Name:     "AI Flight Dashboard.app/Contents/MacOS/AI Flight Dashboard",
+		Mode:     0755,
+		Size:     int64(len(mainContent)),
+		Typeflag: tar.TypeReg,
+	})
+	_, _ = tw.Write(mainContent)
+	_ = tw.Close()
+	_ = gw.Close()
+
+	extracted, err := updater.ExtractBinaryFromArchive(&buf, "ai-flight-dashboard-macos-m-series.tar.gz")
+	if err != nil {
+		t.Fatalf("failed to extract: %v", err)
+	}
+	gotBytes, err := io.ReadAll(extracted)
+	if err != nil {
+		t.Fatalf("failed to read: %v", err)
+	}
+	if !bytes.Equal(gotBytes, mainContent) {
+		t.Errorf("expected main executable, got %q", string(gotBytes))
+	}
+}

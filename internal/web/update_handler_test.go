@@ -57,10 +57,15 @@ func TestHandleUpdateCheck_HasUpdate(t *testing.T) {
 	}))
 	defer apiServer.Close()
 
-	// Redirect default base
+	// Redirect default base; use a unique repo so the global check cache cannot leak in.
 	origBase := updater.GitHubAPIBase
+	origRepo := updater.GitHubRepo
 	updater.GitHubAPIBase = apiServer.URL
-	defer func() { updater.GitHubAPIBase = origBase }()
+	updater.GitHubRepo = "has-update/test"
+	defer func() {
+		updater.GitHubAPIBase = origBase
+		updater.GitHubRepo = origRepo
+	}()
 
 	database, calc := testutil.NewTestDBAndCalc(t)
 	defer database.Close()
@@ -99,5 +104,77 @@ func TestHandleUpdateApply_UnauthorizedWhenTokenRequired(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401 Unauthorized, got %d", w.Code)
+	}
+}
+
+func TestHandleUpdateCheck_ErrorIsFlat(t *testing.T) {
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer apiServer.Close()
+
+	origBase := updater.GitHubAPIBase
+	origRepo := updater.GitHubRepo
+	updater.GitHubAPIBase = apiServer.URL
+	updater.GitHubRepo = "error/test"
+	defer func() {
+		updater.GitHubAPIBase = origBase
+		updater.GitHubRepo = origRepo
+	}()
+
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+	handler := web.NewHandler(database, calc, nil, nil, "", emptyFS)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/system/update/check", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	var status updater.UpdateStatus
+	if err := json.NewDecoder(w.Body).Decode(&status); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if status.HasUpdate {
+		t.Error("expected has_update=false on error")
+	}
+	if status.Error == "" {
+		t.Error("expected error message in the flat response")
+	}
+}
+
+func TestHandleUpdateCheck_CachesResult(t *testing.T) {
+	var hits int
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(updater.Release{TagName: "v9.9.9"})
+	}))
+	defer apiServer.Close()
+
+	origBase := updater.GitHubAPIBase
+	origRepo := updater.GitHubRepo
+	updater.GitHubAPIBase = apiServer.URL
+	updater.GitHubRepo = "cache-test/repo"
+	defer func() {
+		updater.GitHubAPIBase = origBase
+		updater.GitHubRepo = origRepo
+	}()
+
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+	handler := web.NewHandler(database, calc, nil, nil, "", emptyFS)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/api/system/update/check", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+	}
+
+	if hits != 1 {
+		t.Errorf("expected 1 upstream request, got %d", hits)
 	}
 }
