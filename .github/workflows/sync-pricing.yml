@@ -60,17 +60,15 @@ jobs:
           else
             gh pr create \
               --title "chore(pricing): sync model prices from upstream registry" \
-              --body "$(cat <<'EOF'
-## Summary
-Automated daily synchronization of model pricing from upstream registry.
-
-## Release notes zh-CN
-- 同步上游模型定价表的最新价格与新增模型支持
-
-## Release notes en-US
-- Sync latest model prices and newly added models from upstream registry
-EOF
-)" \
+              --body "$(printf '%s\n' \
+                '## Summary' \
+                'Automated daily synchronization of model pricing from upstream registry.' \
+                '' \
+                '## Release notes zh-CN' \
+                '- 同步上游模型定价表的最新价格与新增模型支持' \
+                '' \
+                '## Release notes en-US' \
+                '- Sync latest model prices and newly added models from upstream registry')" \
               --base main \
               --head "$BRANCH_NAME"
           fi

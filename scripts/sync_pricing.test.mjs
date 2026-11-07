@@ -100,3 +100,37 @@ test('formatPricingTableJSON formats sorted keys with 2-space indentation', () =
   assert.ok(alphaIdx > 0 && zebraIdx > alphaIdx);
   assert.ok(jsonStr.endsWith('\n'));
 });
+
+test('sync-pricing workflow file has valid structure and required bilingual sections', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const workflowPath = path.resolve(process.cwd(), '.github/workflows/sync-pricing.yml');
+  const content = fs.readFileSync(workflowPath, 'utf8');
+
+  assert.match(content, /^name:\s*Sync Model Pricing/m);
+  assert.match(content, /schedule:/);
+  assert.match(content, /cron:\s*'0 2 \* \* \*'/);
+  assert.match(content, /workflow_dispatch:/);
+  assert.match(content, /## Release notes zh-CN/);
+  assert.match(content, /## Release notes en-US/);
+  // Ensure no heredoc lines reset to column 1 inside run block
+  const lines = content.split('\n');
+  let inRunBlock = false;
+  let runIndent = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*run:\s*\|/.test(line)) {
+      inRunBlock = true;
+      runIndent = line.search(/\S/);
+      continue;
+    }
+    if (inRunBlock) {
+      if (line.trim() === '') continue;
+      const indent = line.search(/\S/);
+      if (indent <= runIndent) {
+        // Reached next YAML key
+        inRunBlock = false;
+      }
+    }
+  }
+});
