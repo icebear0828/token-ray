@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 )
@@ -110,6 +111,9 @@ func postJSON(port int, path string, payload []byte) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if csrf := os.Getenv("ANTIGRAVITY_CSRF_TOKEN"); csrf != "" {
+		req.Header.Set("x-codeium-csrf-token", csrf)
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err

@@ -263,3 +263,104 @@ func TestNormalizeDisplayName(t *testing.T) {
 		}
 	}
 }
+
+func TestClientCsrfHeader(t *testing.T) {
+	const expectedToken = "test-csrf-token-xyz"
+	var receivedToken string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedToken = r.Header.Get("x-codeium-csrf-token")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fakeSummariesJSON("conv-csrf")))
+	}))
+	defer srv.Close()
+
+	t.Setenv("ANTIGRAVITY_CSRF_TOKEN", expectedToken)
+	port := portFromURL(t, srv.URL)
+
+	_, err := getAllTrajectories(port)
+	if err != nil {
+		t.Fatalf("getAllTrajectories: %v", err)
+	}
+	if receivedToken != expectedToken {
+		t.Errorf("expected CSRF token %q, got %q", expectedToken, receivedToken)
+	}
+}
+
+func TestScanTranscripts(t *testing.T) {
+	database, calc := testutil.NewTestDBAndCalc(t)
+	dir := t.TempDir()
+
+	brainDir := filepath.Join(dir, "brain")
+	cascadeID := "conv-1234"
+	logDir := filepath.Join(brainDir, cascadeID, ".system_generated", "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	histPath := filepath.Join(dir, "history.jsonl")
+	histLine := `{"conversationId":"` + cascadeID + `","workspace":"/Users/c/awesome-proj"}` + "\n"
+	if err := os.WriteFile(histPath, []byte(histLine), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	settingsPath := filepath.Join(dir, "settings.json")
+	settingsContent := `{"model":"Gemini 3.8 Flash (Medium)"}`
+	if err := os.WriteFile(settingsPath, []byte(settingsContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	transcriptPath := filepath.Join(logDir, "transcript.jsonl")
+	transcriptContent := strings.Join([]string{
+		`{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-07T10:00:00Z","content":"<USER_SETTINGS_CHANGE>\nThe user changed setting ` + "`Model Selection` from None to Gemini 3.8 Flash (Medium)." + `\n</USER_SETTINGS_CHANGE>"}`,
+		`{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-07T10:00:05Z","input_tokens":5000,"cache_read_tokens":1000,"output_tokens":200}`,
+		`{"step_index":2,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-07T10:00:10Z","input_tokens":3000,"cache_read_tokens":500,"output_tokens":100}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(transcriptPath, []byte(transcriptContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := &Scanner{
+		db:           database,
+		calc:         calc,
+		DeviceID:     "local",
+		LogDir:       filepath.Join(dir, "log"),
+		HistPath:     histPath,
+		BrainDir:     brainDir,
+		SettingsPath: settingsPath,
+	}
+
+	usageChan := make(chan watcher.TokenUsage, 10)
+	n, err := scanner.Scan(usageChan)
+	if err != nil {
+		t.Fatalf("scanner.Scan: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 records scanned, got %d", n)
+	}
+
+	if len(usageChan) != 2 {
+		t.Fatalf("expected 2 usage events on chan, got %d", len(usageChan))
+	}
+	u1 := <-usageChan
+	if u1.UUID != "agy:conv-1234:1" || u1.Model != "gemini-3.8-flash" || u1.Project != "awesome-proj" {
+		t.Errorf("u1 mismatch: %+v", u1)
+	}
+	if u1.InputTokens != 6000 || u1.CachedTokens != 1000 || u1.OutputTokens != 200 {
+		t.Errorf("u1 tokens mismatch: in=%d cache=%d out=%d", u1.InputTokens, u1.CachedTokens, u1.OutputTokens)
+	}
+
+	u2 := <-usageChan
+	if u2.UUID != "agy:conv-1234:2" || u2.Model != "gemini-3.8-flash" || u2.Project != "awesome-proj" {
+		t.Errorf("u2 mismatch: %+v", u2)
+	}
+
+	// Second scan should be incremental (0 new records)
+	n2, err := scanner.Scan(usageChan)
+	if err != nil {
+		t.Fatalf("second scanner.Scan: %v", err)
+	}
+	if n2 != 0 {
+		t.Errorf("expected 0 new records on second scan, got %d", n2)
+	}
+}
