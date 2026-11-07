@@ -52,6 +52,31 @@ func TestEmbeddedPricingMatchesOfficialRates(t *testing.T) {
 			CachedPricePerM: 0.20,
 			OutputPricePerM: 12.00,
 		},
+		"gemini-3.1-flash-lite-preview": {
+			InputPricePerM:  0.10,
+			CachedPricePerM: 0.01,
+			OutputPricePerM: 0.40,
+		},
+		"gemini-3.1-flash-lite": {
+			InputPricePerM:  0.10,
+			CachedPricePerM: 0.01,
+			OutputPricePerM: 0.40,
+		},
+		"gemini-3.8-flash": {
+			InputPricePerM:  0.60,
+			CachedPricePerM: 0.06,
+			OutputPricePerM: 4.00,
+		},
+		"gemini-4-argon": {
+			InputPricePerM:  3.00,
+			CachedPricePerM: 0.30,
+			OutputPricePerM: 18.00,
+		},
+		"gemini-3-pro-high": {
+			InputPricePerM:  2.00,
+			CachedPricePerM: 0.20,
+			OutputPricePerM: 12.00,
+		},
 		"gpt-5.5": {
 			InputPricePerM:  5.00,
 			CachedPricePerM: 0.50,
@@ -66,6 +91,36 @@ func TestEmbeddedPricingMatchesOfficialRates(t *testing.T) {
 			InputPricePerM:  0.75,
 			CachedPricePerM: 0.075,
 			OutputPricePerM: 4.50,
+		},
+		"claude-opus-5-5": {
+			InputPricePerM:         15.00,
+			CachedPricePerM:        1.50,
+			CacheCreationPricePerM: 18.75,
+			OutputPricePerM:        75.00,
+		},
+		"claude-sonnet-5-5": {
+			InputPricePerM:         3.00,
+			CachedPricePerM:        0.30,
+			CacheCreationPricePerM: 3.75,
+			OutputPricePerM:        15.00,
+		},
+		"claude-opus-4-5": {
+			InputPricePerM:         5.00,
+			CachedPricePerM:        0.50,
+			CacheCreationPricePerM: 6.25,
+			OutputPricePerM:        25.00,
+		},
+		"claude-sonnet-4-5": {
+			InputPricePerM:         3.00,
+			CachedPricePerM:        0.30,
+			CacheCreationPricePerM: 3.75,
+			OutputPricePerM:        15.00,
+		},
+		"claude-sonnet-4": {
+			InputPricePerM:         3.00,
+			CachedPricePerM:        0.30,
+			CacheCreationPricePerM: 3.75,
+			OutputPricePerM:        15.00,
 		},
 		"claude-sonnet-4-6": {
 			InputPricePerM:         3.00,
@@ -102,6 +157,27 @@ func TestEmbeddedPricingMatchesOfficialRates(t *testing.T) {
 			CachedPricePerM:        0.10,
 			CacheCreationPricePerM: 1.25,
 			OutputPricePerM:        5.00,
+		},
+		"claude-haiku-4-5": {
+			InputPricePerM:         1.00,
+			CachedPricePerM:        0.10,
+			CacheCreationPricePerM: 1.25,
+			OutputPricePerM:        5.00,
+		},
+		"deepseek-v4.1-flash": {
+			InputPricePerM:  0.14,
+			CachedPricePerM: 0.014,
+			OutputPricePerM: 0.28,
+		},
+		"deepseek-chat": {
+			InputPricePerM:  0.27,
+			CachedPricePerM: 0.027,
+			OutputPricePerM: 1.10,
+		},
+		"deepseek-reasoner": {
+			InputPricePerM:  0.55,
+			CachedPricePerM: 0.055,
+			OutputPricePerM: 2.19,
 		},
 	}
 

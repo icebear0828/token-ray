@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
 	"ai-flight-dashboard/internal/calculator"
 )
 
@@ -81,4 +82,154 @@ func TestCalculateCost(t *testing.T) {
 	if cost != 0 {
 		t.Errorf("Expected 0 cost for unknown model, got %f", cost)
 	}
+}
+
+func TestNormalizeModelName(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"claude-sonnet-4-5", "claude-sonnet-4-5"},
+		{"claude-sonnet-4-5-thinking", "claude-sonnet-4-5"},
+		{"claude-sonnet-4-5-20250929", "claude-sonnet-4-5"},
+		{"claude-sonnet-4-5-thinking-20251101", "claude-sonnet-4-5"},
+		{"gemini-3.1-flash-lite-preview", "gemini-3.1-flash-lite"},
+		{"claude-opus-4-5-20260101", "claude-opus-4-5"},
+		{"unknown-model-20991231", "unknown-model"},
+		{"no-suffix", "no-suffix"},
+		{"gemini-2.0-flash-thinking-preview", "gemini-2.0-flash"},
+		{"gemini-2.0-flash-preview-thinking", "gemini-2.0-flash"},
+		{"claude-sonnet-4-5-preview-thinking-20251101", "claude-sonnet-4-5"},
+	}
+	for _, tc := range cases {
+		got := calculator.NormalizeModelName(tc.input)
+		if got != tc.want {
+			t.Errorf("NormalizeModelName(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestCalculateCostFallbackNormalization(t *testing.T) {
+	tempDir := t.TempDir()
+	pricingPath := filepath.Join(tempDir, "pricing_table.json")
+	content := `{
+		"models": {
+			"claude-sonnet-4-5": {
+				"input_price_per_m": 3.00,
+				"cached_price_per_m": 0.30,
+				"cache_creation_price_per_m": 3.75,
+				"output_price_per_m": 15.00
+			},
+			"gemini-3.1-flash-lite": {
+				"input_price_per_m": 0.10,
+				"cached_price_per_m": 0.01,
+				"cache_creation_price_per_m": 0.00,
+				"output_price_per_m": 0.40
+			},
+			"custom-preview-only": {
+				"input_price_per_m": 1.00,
+				"cached_price_per_m": 0.10,
+				"cache_creation_price_per_m": 0.00,
+				"output_price_per_m": 2.00
+			}
+		}
+	}`
+	if err := os.WriteFile(pricingPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write pricing: %v", err)
+	}
+	calc, err := calculator.New(pricingPath)
+	if err != nil {
+		t.Fatalf("new calculator: %v", err)
+	}
+
+	t.Run("exact match", func(t *testing.T) {
+		cost, err := calc.CalculateCost("claude-sonnet-4-5", 1_000_000, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 3.00 {
+			t.Errorf("exact match cost = %f, want 3.00", cost)
+		}
+	})
+
+	t.Run("date-suffix fallback", func(t *testing.T) {
+		// claude-sonnet-4-5-20250929 → strips date → claude-sonnet-4-5
+		cost, err := calc.CalculateCost("claude-sonnet-4-5-20250929", 1_000_000, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 3.00 {
+			t.Errorf("date-suffix fallback cost = %f, want 3.00", cost)
+		}
+	})
+
+	t.Run("thinking-suffix fallback", func(t *testing.T) {
+		// claude-sonnet-4-5-thinking → strips -thinking → claude-sonnet-4-5
+		cost, err := calc.CalculateCost("claude-sonnet-4-5-thinking", 1_000_000, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 3.00 {
+			t.Errorf("thinking-suffix fallback cost = %f, want 3.00", cost)
+		}
+	})
+
+	t.Run("thinking+date combined fallback", func(t *testing.T) {
+		// claude-sonnet-4-5-thinking-20251101 → strip date → claude-sonnet-4-5-thinking → strip thinking → claude-sonnet-4-5
+		cost, err := calc.CalculateCost("claude-sonnet-4-5-thinking-20251101", 1_000_000, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 3.00 {
+			t.Errorf("combined fallback cost = %f, want 3.00", cost)
+		}
+	})
+
+	t.Run("preview-suffix fallback", func(t *testing.T) {
+		// gemini-3.1-flash-lite-preview → strips -preview → gemini-3.1-flash-lite
+		cost, err := calc.CalculateCost("gemini-3.1-flash-lite-preview", 1_000_000, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 0.10 {
+			t.Errorf("preview-suffix fallback cost = %f, want 0.10", cost)
+		}
+	})
+
+	t.Run("progressive fallback to preview entry when date stripped", func(t *testing.T) {
+		cost, err := calc.CalculateCost("custom-preview-only-20260501", 1_000_000, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 1.00 {
+			t.Errorf("progressive fallback cost = %f, want 1.00", cost)
+		}
+	})
+
+	t.Run("GetModelPrice fallback", func(t *testing.T) {
+		price, ok := calc.GetModelPrice("claude-sonnet-4-5-20250929")
+		if !ok || price.InputPricePerM != 3.00 {
+			t.Errorf("GetModelPrice fallback failed: ok=%v, price=%+v", ok, price)
+		}
+	})
+
+	t.Run("CalculateCostNoCaching fallback", func(t *testing.T) {
+		cost, err := calc.CalculateCostNoCaching("claude-sonnet-4-5-thinking-20251101", 1_000_000, 500_000, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 3.00 {
+			t.Errorf("CalculateCostNoCaching fallback cost = %f, want 3.00", cost)
+		}
+	})
+
+	t.Run("truly unknown model still returns 0", func(t *testing.T) {
+		cost, err := calc.CalculateCost("totally-unknown-model", 1_000_000, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 0 {
+			t.Errorf("unknown model cost = %f, want 0", cost)
+		}
+	})
 }

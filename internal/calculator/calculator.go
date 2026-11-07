@@ -4,8 +4,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 	"sync"
 )
+
+// dateSuffixRe matches trailing date suffixes like -20250929, -20251101.
+var dateSuffixRe = regexp.MustCompile(`-\d{8}$`)
+
+// NormalizeModelName strips known variant suffixes from a model name so that
+// unknown variants fall back to their base model's pricing.
+//
+// Rules applied:
+//  1. Strip trailing date suffix (e.g. -20250929)
+//  2. Repeatedly strip known variant suffixes (-thinking, -preview) until stable
+//
+// The function returns the stripped name. If no stripping applies the input is
+// returned unchanged.
+func NormalizeModelName(model string) string {
+	model = dateSuffixRe.ReplaceAllString(model, "")
+	for {
+		prev := model
+		model = strings.TrimSuffix(model, "-thinking")
+		model = strings.TrimSuffix(model, "-preview")
+		if model == prev {
+			break
+		}
+	}
+	return model
+}
 
 type ModelPrice struct {
 	InputPricePerM         float64 `json:"input_price_per_m"`
@@ -70,12 +97,41 @@ func (c *Calculator) LoadCustomPrices(filepath string) error {
 	return nil
 }
 
-// CalculateCost takes the specific token metrics and returns the estimated USD cost.
-func (c *Calculator) CalculateCost(model string, inputTokens, cachedTokens, cacheCreationTokens, outputTokens int) (float64, error) {
+// lookupPrice returns the ModelPrice for model, applying fallback normalization
+// when an exact match is not found in the pricing table. The caller must NOT
+// hold c.mu when calling this function.
+func (c *Calculator) lookupPrice(model string) (ModelPrice, bool) {
 	c.mu.RLock()
-	price, ok := c.prices.Models[model]
-	c.mu.RUnlock()
-	
+	defer c.mu.RUnlock()
+
+	// 1. Exact match
+	if p, ok := c.prices.Models[model]; ok {
+		return p, true
+	}
+
+	// 2. Date-stripped fallback (e.g. custom-preview-only-20260501 -> custom-preview-only)
+	dateStripped := dateSuffixRe.ReplaceAllString(model, "")
+	if dateStripped != model {
+		if p, ok := c.prices.Models[dateStripped]; ok {
+			return p, true
+		}
+	}
+
+	// 3. Progressive/fully normalized fallback
+	normalized := NormalizeModelName(dateStripped)
+	if normalized != dateStripped {
+		if p, ok := c.prices.Models[normalized]; ok {
+			return p, true
+		}
+	}
+	return ModelPrice{}, false
+}
+
+// CalculateCost takes the specific token metrics and returns the estimated USD cost.
+// When the exact model name is not found in the pricing table, it falls back to a
+// normalized base name (stripping date/thinking/preview suffixes).
+func (c *Calculator) CalculateCost(model string, inputTokens, cachedTokens, cacheCreationTokens, outputTokens int) (float64, error) {
+	price, ok := c.lookupPrice(model)
 	if !ok {
 		return 0, nil // unknown model, skip silently
 	}
@@ -93,12 +149,10 @@ func (c *Calculator) CalculateCost(model string, inputTokens, cachedTokens, cach
 	return inputCost + cachedCost + cacheCreationCost + outputCost, nil
 }
 
-// GetModelPrice returns the price table for a specific model.
+// GetModelPrice returns the price table for a specific model, applying fallback
+// normalization when an exact match is not found.
 func (c *Calculator) GetModelPrice(model string) (ModelPrice, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	price, ok := c.prices.Models[model]
-	return price, ok
+	return c.lookupPrice(model)
 }
 
 // ListModels returns all model names in the pricing table.
@@ -114,11 +168,9 @@ func (c *Calculator) ListModels() []string {
 
 // CalculateCostNoCaching computes a hypothetical cost where cached tokens are
 // charged at the full input price instead of the discounted cached price.
+// Falls back to normalized model name when exact match is not found.
 func (c *Calculator) CalculateCostNoCaching(model string, inputTokens, cachedTokens, cacheCreationTokens, outputTokens int) (float64, error) {
-	c.mu.RLock()
-	price, ok := c.prices.Models[model]
-	c.mu.RUnlock()
-	
+	price, ok := c.lookupPrice(model)
 	if !ok {
 		return 0, nil
 	}
