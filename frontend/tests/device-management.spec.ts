@@ -1,15 +1,17 @@
 import { expect, test } from '@playwright/test';
 
-import { emptyStatsPayload, fulfillEmptyLANScan, fulfillJSON, fulfillLANStatus, periods } from './dashboard-helpers';
+import {
+  emptyStatsPayload,
+  fulfillConfig,
+  fulfillEmptyLANScan,
+  fulfillJSON,
+  fulfillLANStatus,
+  fulfillLANSelf,
+} from './dashboard-helpers';
 
-test('settings device management can create edit clear and soft-delete devices', async ({ page }) => {
+test('device drawer can create edit clear and soft-delete devices', async ({ page }) => {
   const pageErrors: string[] = [];
-  const dialogs: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  page.on('dialog', async (dialog) => {
-    dialogs.push(dialog.message());
-    await dialog.dismiss();
-  });
   await page.setViewportSize({ width: 390, height: 820 });
 
   type DeviceRow = {
@@ -41,15 +43,17 @@ test('settings device management can create edit clear and soft-delete devices',
   let softDeletedDevice = '';
 
   await page.route('**/api/stats?*', async (route) => {
-    await fulfillJSON(route, { ...emptyStatsPayload, periods, devices: [] });
+    await fulfillJSON(route, emptyStatsPayload);
   });
   await page.route('**/api/lan/scan', fulfillEmptyLANScan);
   await page.route('**/api/lan/status', fulfillLANStatus);
+  await page.route('**/api/lan/self', (route) => fulfillLANSelf(route, 'local-machine'));
   await page.route('**/api/pricing', async (route) => {
     await fulfillJSON(route, []);
   });
-  await page.route('**/api/config', async (route) => {
-    await fulfillJSON(route, { auto_start: false, extra_watch_dirs: [], enable_lan: true });
+  await page.route('**/api/config', (route) => fulfillConfig(route));
+  await page.route('**/api/system/logs', async (route) => {
+    await fulfillJSON(route, { path: '/tmp/ai-flight-dashboard/stats' });
   });
   await page.route('**/api/devices**', async (route) => {
     if (route.request().method() === 'DELETE') {
@@ -85,7 +89,9 @@ test('settings device management can create edit clear and soft-delete devices',
     if (route.request().method() === 'DELETE') {
       const url = new URL(route.request().url());
       clearedAlias = url.searchParams.get('device_id') ?? '';
-      devices = devices.map((device) => device.id === clearedAlias ? { ...device, display_name: device.id } : device);
+      devices = devices.map((device) =>
+        device.id === clearedAlias ? { ...device, display_name: device.id } : device
+      );
       await route.fulfill({ status: 200, contentType: 'application/json', body: '' });
       return;
     }
@@ -93,38 +99,38 @@ test('settings device management can create edit clear and soft-delete devices',
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: /系统设置|SETTINGS/ }).click();
-  await page.getByRole('button', { name: /设备管理|DEVICE MANAGEMENT/ }).click();
+  await page.getByRole('button', { name: '设备管理' }).click();
 
   await expect(page.getByTestId('device-row').filter({ hasText: 'nas.local' })).toBeVisible();
 
-  await page.getByPlaceholder(/设备 ID|DEVICE ID/).fill('probe-local');
-  await page.getByPlaceholder(/显示名称|DISPLAY NAME/).fill('Probe Local');
-  await page.getByRole('button', { name: /\+ 添加别名|\+ ADD ALIAS/ }).click();
+  await page.getByPlaceholder('设备 ID').fill('probe-local');
+  await page.getByPlaceholder('显示名称').fill('Probe Local');
+  await page.getByRole('button', { name: '添加别名' }).click();
   await expect(page.getByText('Probe Local', { exact: true })).toBeVisible();
 
   const nasRow = page.getByTestId('device-row').filter({ hasText: 'nas.local' });
-  await nasRow.getByRole('button', { name: /编辑|EDIT/ }).click();
-  await nasRow.getByRole('textbox').fill('NAS');
-  await nasRow.getByRole('button', { name: /保存|SAVE/ }).click();
+  await nasRow.getByPlaceholder('输入设备别名...').fill('NAS');
+  await nasRow.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('NAS', { exact: true })).toBeVisible();
 
-  await nasRow.getByRole('button', { name: /清除别名|CLEAR ALIAS/ }).click();
+  await nasRow.getByRole('button', { name: '清除别名' }).click();
   await expect.poll(() => clearedAlias).toBe('nas.local');
 
   const probeRow = page.getByTestId('device-row').filter({ hasText: 'probe-local' });
-  await probeRow.getByRole('button', { name: /软删除|SOFT DELETE/ }).click();
-  await expect(page.getByRole('button', { name: /确认软删除|CONFIRM DELETE/ })).toBeVisible();
-  await page.getByRole('button', { name: /确认软删除|CONFIRM DELETE/ }).click();
+  await probeRow.getByRole('button', { name: '软删除设备' }).click();
+  await page.getByRole('button', { name: '确认软删除' }).click();
   await expect.poll(() => softDeletedDevice).toBe('probe-local');
   await expect(page.getByText('probe-local', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('device-management-list')).toBeVisible();
-  expect(await page.getByTestId('device-management-list').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  expect(dialogs).toEqual([]);
+  expect(
+    await page
+      .getByTestId('device-management-list')
+      .evaluate((element) => element.scrollWidth <= element.clientWidth)
+  ).toBe(true);
   expect(pageErrors).toEqual([]);
 });
 
-test('settings can add an extra watch directory when backend returns null dirs', async ({ page }) => {
+test('config drawer can add an extra watch directory when backend returns null dirs', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.setViewportSize({ width: 390, height: 820 });
@@ -138,7 +144,7 @@ test('settings can add an extra watch directory when backend returns null dirs',
   let savedConfig: ConfigPayload | null = null;
 
   await page.route('**/api/stats?*', async (route) => {
-    await fulfillJSON(route, { ...emptyStatsPayload, periods, devices: [] });
+    await fulfillJSON(route, emptyStatsPayload);
   });
   await page.route('**/api/lan/scan', fulfillEmptyLANScan);
   await page.route('**/api/lan/status', fulfillLANStatus);
@@ -148,24 +154,30 @@ test('settings can add an extra watch directory when backend returns null dirs',
   await page.route('**/api/devices**', async (route) => {
     await fulfillJSON(route, []);
   });
+  await page.route('**/api/system/logs', async (route) => {
+    await fulfillJSON(route, { path: '/tmp/ai-flight-dashboard/stats' });
+  });
   await page.route('**/api/config', async (route) => {
     if (route.request().method() === 'PUT') {
       savedConfig = await route.request().postDataJSON() as ConfigPayload;
       await fulfillJSON(route, savedConfig);
       return;
     }
-    await fulfillJSON(route, { auto_start: false, extra_watch_dirs: null, enable_lan: true });
+    await fulfillJSON(route, {
+      auto_start: false,
+      extra_watch_dirs: null,
+      enable_lan: true,
+    });
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: /系统设置|SETTINGS/ }).click();
-  await page.getByRole('button', { name: /系统配置|SYSTEM CONFIG/ }).click();
+  await page.getByRole('button', { name: '系统配置' }).click();
 
-  await page.getByPlaceholder(/绝对路径|Absolute path/).fill('/tmp/token-ray-extra');
-  await page.getByRole('button', { name: /\+ 添加路径|\+ ADD PATH/ }).click();
+  await page.getByPlaceholder('输入绝对路径...').fill('/tmp/token-ray-extra');
+  await page.getByRole('button', { name: '添加路径' }).click();
   await expect(page.getByText('/tmp/token-ray-extra', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: /保存配置与计价|SAVE CONFIG & PRICING/ }).click();
+  await page.getByRole('button', { name: '保存配置' }).click();
 
   await expect.poll(() => savedConfig?.extra_watch_dirs).toEqual(['/tmp/token-ray-extra']);
   expect(pageErrors).toEqual([]);

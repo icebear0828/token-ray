@@ -1,13 +1,16 @@
 import React from "react";
 
-type ErrorBoundaryState = {
+interface ErrorBoundaryState {
   error: Error | null;
-};
+}
 
-export default class ErrorBoundary extends React.Component<React.PropsWithChildren, ErrorBoundaryState> {
+export class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  ErrorBoundaryState
+> {
   state: ErrorBoundaryState = { error: null };
 
-  static getDerivedStateFromError(error: Error) {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 
@@ -18,25 +21,28 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
   render() {
     if (this.state.error) {
       return (
-        <div className="min-h-screen bg-[#FFFFFF] text-[#FF0000] p-4 sm:p-6 md:p-10 flex items-center justify-center font-display text-xl sm:text-2xl uppercase border-[12px] border-[#FF0000] m-3">
-          <div className="text-center max-w-[900px]">
-            <div className="text-4xl md:text-5xl mb-4 text-[#000000] bg-[#FF0000] inline-block px-6 py-2">
-              SYSTEM ERROR
-            </div>
-            <div className="font-mono text-sm md:text-base normal-case break-words mb-6">
-              {this.state.error.message || String(this.state.error)}
-            </div>
+        <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC] px-4">
+          <div
+            role="alert"
+            className="w-full max-w-lg rounded-xl border border-rose-200 bg-white p-6 shadow-sm"
+          >
+            <h1 className="text-sm font-semibold text-rose-700">
+              Dashboard render failed
+            </h1>
+            <p className="mt-3 break-all rounded-lg bg-rose-50 px-3 py-2 font-mono text-xs text-rose-700">
+              {this.state.error.message}
+            </p>
             <button
-              className="border-[3px] border-[#000000] bg-[#FFFFFF] text-[#000000] px-4 py-2 font-bold text-sm uppercase cursor-pointer"
-              onClick={() => this.setState({ error: null })}
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
             >
-              RESET VIEW
+              Reload
             </button>
           </div>
         </div>
       );
     }
-
     return this.props.children;
   }
 }

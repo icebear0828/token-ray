@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { emptyStatsPayload, fulfillJSON, periods } from './dashboard-helpers';
+import { emptyStatsPayload, fulfillJSON } from './dashboard-helpers';
 
 test('LAN radar shows per-source peer totals before full sync completes', async ({ page }) => {
   await page.route('**/api/stats?*', async (route) => {
@@ -26,16 +26,20 @@ test('LAN radar shows per-source peer totals before full sync completes', async 
       }],
     });
   });
+  await page.route('**/api/lan/status', async (route) => {
+    await fulfillJSON(route, { enabled: true });
+  });
 
   await page.goto('/');
+  await page.getByRole('button', { name: 'LAN 雷达' }).click();
 
-  const lanTable = page.locator('tbody');
-  await expect(lanTable.getByText('Claude Code')).toBeVisible();
-  await expect(lanTable.getByText('Codex', { exact: true })).toBeVisible();
-  await expect(lanTable.getByText('Gemini CLI')).toBeVisible();
-  await expect(lanTable.getByText('2.0K', { exact: true })).toBeVisible();
-  await expect(lanTable.getByText('4.0K', { exact: true })).toBeVisible();
-  await expect(lanTable.getByText('7.0K', { exact: true })).toBeVisible();
+  const drawer = page.locator('aside');
+  await expect(drawer.getByText('Claude Code')).toBeVisible();
+  await expect(drawer.getByText('Codex', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('Gemini CLI')).toBeVisible();
+  await expect(drawer.getByText('2.0K', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('4.0K', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('7.0K', { exact: true })).toBeVisible();
 });
 
 test('LAN radar can leave and rejoin the network', async ({ page }) => {
@@ -43,13 +47,18 @@ test('LAN radar can leave and rejoin the network', async ({ page }) => {
   const lanActions: string[] = [];
 
   await page.route('**/api/stats?*', async (route) => {
-    await fulfillJSON(route, { ...emptyStatsPayload, periods });
+    await fulfillJSON(route, emptyStatsPayload);
   });
   await page.route('**/api/lan/status', async (route) => {
     await fulfillJSON(route, { enabled: lanEnabled });
   });
   await page.route('**/api/lan/scan', async (route) => {
-    await fulfillJSON(route, lanEnabled ? { peers: ['peer-a'], peer_infos: [{ id: 'peer-a', display_name: 'peer-a' }] } : { peers: [] });
+    await fulfillJSON(
+      route,
+      lanEnabled
+        ? { peers: ['peer-a'], peer_infos: [{ id: 'peer-a', display_name: 'peer-a' }] }
+        : { peers: [], peer_infos: [] }
+    );
   });
   await page.route('**/api/lan/join', async (route) => {
     lanActions.push('join');
@@ -63,15 +72,16 @@ test('LAN radar can leave and rejoin the network', async ({ page }) => {
   });
 
   await page.goto('/');
+  await page.getByRole('button', { name: 'LAN 雷达' }).click();
 
-  await expect(page.getByRole('button', { name: '加入网络' })).toBeVisible();
-  await page.getByRole('button', { name: '加入网络' }).click();
-  await expect(page.getByRole('button', { name: '退出网络' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '加入局域网发现' })).toBeVisible();
+  await page.getByRole('button', { name: '加入局域网发现' }).click();
+  await expect(page.getByRole('button', { name: '退出局域网' })).toBeVisible();
 
-  await page.getByRole('button', { name: '退出网络' }).click();
-  await expect(page.getByRole('button', { name: '加入网络' })).toBeVisible();
+  await page.getByRole('button', { name: '退出局域网' }).click();
+  await expect(page.getByRole('button', { name: '加入局域网发现' })).toBeVisible();
 
-  await page.getByRole('button', { name: '加入网络' }).click();
-  await expect(page.getByRole('button', { name: '退出网络' })).toBeVisible();
+  await page.getByRole('button', { name: '加入局域网发现' }).click();
+  await expect(page.getByRole('button', { name: '退出局域网' })).toBeVisible();
   expect(lanActions).toEqual(['join', 'leave', 'join']);
 });
