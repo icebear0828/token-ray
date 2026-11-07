@@ -84,7 +84,7 @@ test('dashboard shows cache hit rate in KPIs and attribution tables', async ({ p
 
   await expect(page.getByText('缓存命中率').first()).toBeVisible();
   await expect(page.getByText('25.0%').first()).toBeVisible();
-  await expect(page.getByRole('columnheader', { name: '缓存命中' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '缓存命中' }).first()).toBeVisible();
 });
 
 test('dashboard shows cost intelligence charts', async ({ page }) => {
@@ -128,6 +128,7 @@ test('dashboard shows cost intelligence charts', async ({ page }) => {
   await expect(page.getByText('CLI 工具占比与分布')).toBeVisible();
   await expect(page.getByTestId('daily-cost-bar')).toHaveCount(30);
   await expect(page.getByTestId('daily-cost-bar').first()).toHaveAttribute('data-cost', '0');
+  await expect(page.getByTestId('daily-cost-bar').first()).toHaveCSS('height', '0px');
   await expect(page.getByTestId('heatmap-cell')).toHaveCount(30);
   await expect(page.getByText('$12.34').first()).toBeVisible();
   await expect(page.getByText('Codex', { exact: true }).first()).toBeVisible();

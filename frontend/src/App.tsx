@@ -73,29 +73,29 @@ export function App() {
       try {
         if (!isBackgroundPoll) {
           setIsHydratingDetails(true);
-          const summaryRes = await fetchStats({
-            device: selectedDevice,
-            source: selectedSource,
-            detail: "summary",
-          });
-          if (seq !== requestSeqRef.current) return;
-          setData((prev) => {
-            const previousModels = new Map(
-              (prev?.sources ?? []).map((source) => [source.name, source.models])
-            );
-            return {
-              ...summaryRes,
-              sources: summaryRes.sources.map((source) => {
-                const models = source.models.length
-                  ? source.models
-                  : previousModels.get(source.name) ?? [];
-                return { ...source, models };
-              }),
-              projects: prev?.projects,
-            };
-          });
-          setLoadError("");
         }
+        const summaryRes = await fetchStats({
+          device: selectedDevice,
+          source: selectedSource,
+          detail: "summary",
+        });
+        if (seq !== requestSeqRef.current) return;
+        setData((prev) => {
+          const previousModels = new Map(
+            (prev?.sources ?? []).map((source) => [source.name, source.models])
+          );
+          return {
+            ...summaryRes,
+            sources: summaryRes.sources.map((source) => {
+              const models = source.models.length
+                ? source.models
+                : previousModels.get(source.name) ?? [];
+              return { ...source, models };
+            }),
+            projects: prev?.projects,
+          };
+        });
+        setLoadError("");
 
         const detailsRes = await fetchStats({
           device: selectedDevice,

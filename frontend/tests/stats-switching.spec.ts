@@ -157,7 +157,7 @@ test('source switching renders summary before delayed details', async ({ page })
   await page.getByRole('button', { name: 'Codex' }).click();
   await expect(page.getByText('gpt-5.5', { exact: true })).toHaveCount(0);
   await expect(page.getByText('token', { exact: true })).toHaveCount(0);
-  expect(heldCodexDetailsRoute).not.toBeNull();
+  await expect.poll(() => heldCodexDetailsRoute).not.toBeNull();
   expect(requestedDetails).toContain('summary');
   expect(requestedDetails).toContain('details');
 
@@ -177,6 +177,7 @@ test('background refresh keeps project stats visible while details reload', asyn
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   let detailsRequests = 0;
+  let summaryRequests = 0;
   let heldRefreshDetailsRoute: Route | null = null;
 
   await page.route('**/api/stats?*', async (route) => {
@@ -193,6 +194,7 @@ test('background refresh keeps project stats visible while details reload', asyn
       return;
     }
 
+    summaryRequests += 1;
     await fulfillJSON(route, summaryPayload('Codex'));
   });
   await page.route('**/api/lan/scan', fulfillEmptyLANScan);
@@ -204,6 +206,7 @@ test('background refresh keeps project stats visible while details reload', asyn
   await expect(page.getByText('gpt-5.5', { exact: true })).toBeVisible();
 
   await expect.poll(() => heldRefreshDetailsRoute !== null, { timeout: 7000 }).toBe(true);
+  expect(summaryRequests).toBeGreaterThanOrEqual(2);
   await expect(page.getByText('token', { exact: true })).toBeVisible();
   await expect(page.getByText('gpt-5.5', { exact: true })).toBeVisible();
 

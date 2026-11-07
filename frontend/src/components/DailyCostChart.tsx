@@ -104,7 +104,9 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({ data, currency }
         <div className="relative z-10 flex h-full items-end gap-[3px] pl-14 pb-5">
           {stats.safeData.map((point, index) => {
             const heightPct =
-              stats.ceiling > 0 ? Math.min(100, Math.max(2, (point.cost / stats.ceiling) * 100)) : 2;
+              point.cost > 0 && stats.ceiling > 0
+                ? Math.min(100, Math.max(2, (point.cost / stats.ceiling) * 100))
+                : 0;
             const isHovered = hoveredIdx === index;
             const isToday = index === stats.safeData.length - 1;
 
@@ -125,14 +127,14 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({ data, currency }
                   data-testid="daily-cost-bar"
                   data-date={point.date}
                   data-cost={point.cost}
-                  style={{ height: `${point.cost === 0 ? 2 : heightPct}%` }}
+                  style={{ height: `${heightPct}%` }}
                   className={`relative w-full rounded-t-[3px] transition-all duration-150 ${
                     isHovered
                       ? "bg-slate-900"
                       : isToday
                         ? "bg-blue-600"
                         : point.cost === 0
-                          ? "bg-slate-200"
+                          ? ""
                           : "bg-slate-700/85 hover:bg-slate-900"
                   }`}
                 />

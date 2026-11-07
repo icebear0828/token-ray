@@ -47,7 +47,11 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     if (!contentType.includes("application/json")) {
       return null as T;
     }
-    return (await res.json()) as T;
+    const text = await res.text();
+    if (!text || text.trim() === "") {
+      return null as T;
+    }
+    return JSON.parse(text) as T;
   } finally {
     clearTimeout(timer);
   }

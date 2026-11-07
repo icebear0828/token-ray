@@ -29,8 +29,8 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency
     // Group into columns of 7 days (Sunday=0 .. Saturday=6)
     const cols: (HeatmapPoint | null)[][] = [];
     if (safe.length > 0) {
-      const firstDate = new Date(safe[0].date + "T00:00:00");
-      const startDay = Number.isNaN(firstDate.getTime()) ? 0 : firstDate.getDay();
+      const firstDate = new Date(`${safe[0].date}T00:00:00Z`);
+      const startDay = Number.isNaN(firstDate.getTime()) ? 0 : firstDate.getUTCDay();
       let currentWeek: (HeatmapPoint | null)[] = Array(startDay).fill(null);
 
       for (const item of safe) {
@@ -54,9 +54,9 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency
     cols.forEach((week, colIdx) => {
       const firstValid = week.find((c) => c !== null);
       if (firstValid) {
-        const dt = new Date(firstValid.date + "T00:00:00");
+        const dt = new Date(`${firstValid.date}T00:00:00Z`);
         if (!Number.isNaN(dt.getTime())) {
-          const m = dt.getMonth();
+          const m = dt.getUTCMonth();
           if (m !== lastMonth) {
             labels.push({ colIdx, label: MONTHS[m] });
             lastMonth = m;
