@@ -114,5 +114,7 @@
   "updateFailed": "更新失败",
   "releaseNotes": "更新说明",
   "viewDetails": "查看详情",
-  "platform": "运行平台"
+  "platform": "运行平台",
+  "unknown": "未知",
+  "noUpdateAsset": "当前平台暂无可用更新包。"
 }

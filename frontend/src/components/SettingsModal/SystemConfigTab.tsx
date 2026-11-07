@@ -30,6 +30,7 @@ interface UpdateStatus {
   published_at?: string;
   download_url?: string;
   asset_name?: string;
+  error?: string;
 }
 
 interface UpdateApplyResponse {
@@ -81,6 +82,7 @@ export default function SystemConfigTab({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as UpdateStatus;
       setUpdateStatus(data);
+      if (data.error) setUpdateError(data.error);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setUpdateError(msg);
@@ -97,12 +99,12 @@ export default function SystemConfigTab({
       const res = await fetch('/api/system/update/apply', {
         method: 'POST',
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as UpdateApplyResponse;
-      if (data.success) {
+      const data = (await res.json().catch(() => null)) as UpdateApplyResponse | null;
+      if (!res.ok && !data) throw new Error(`HTTP ${res.status}`);
+      if (data?.success) {
         setUpdateResult(data.message || t('updateSuccess'));
       } else {
-        setUpdateError(data.message || t('updateFailed'));
+        setUpdateError(data?.message || t('updateFailed'));
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -125,11 +127,11 @@ export default function SystemConfigTab({
               <div className="font-bold uppercase text-base">
                 {t('currentVersion')}:{' '}
                 <span className="font-mono bg-[#000000] text-[#FFFFFF] px-2 py-0.5">
-                  {versionInfo?.version || 'v1.8.1'}
+                  {versionInfo?.version || t('unknown')}
                 </span>
               </div>
               <div className="text-sm text-[#666666] font-mono mt-1">
-                {t('platform')}: {versionInfo ? `${versionInfo.goos}/${versionInfo.goarch}` : 'unknown'}
+                {t('platform')}: {versionInfo ? `${versionInfo.goos}/${versionInfo.goarch}` : t('unknown')}
               </div>
             </div>
             <button
@@ -153,7 +155,7 @@ export default function SystemConfigTab({
             </div>
           )}
 
-          {updateStatus && !updateStatus.has_update && !updateResult && (
+          {updateStatus && !updateStatus.has_update && !updateResult && !updateError && (
             <div className="text-sm text-[#008000] font-mono font-bold flex items-center gap-2">
               <span>✓</span> {t('alreadyLatest')} ({updateStatus.latest_version})
             </div>
@@ -175,13 +177,19 @@ export default function SystemConfigTab({
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={handleApplyUpdate}
-                  disabled={applyingUpdate}
-                  className="border-[3px] border-[#000000] bg-[#008000] text-[#FFFFFF] px-6 py-2 font-bold uppercase hover:opacity-90 transition-none disabled:opacity-50 text-sm whitespace-nowrap"
-                >
-                  {applyingUpdate ? t('updating') : t('applyUpdate')}
-                </button>
+                {updateStatus.asset_name ? (
+                  <button
+                    onClick={handleApplyUpdate}
+                    disabled={applyingUpdate}
+                    className="border-[3px] border-[#000000] bg-[#008000] text-[#FFFFFF] px-6 py-2 font-bold uppercase hover:opacity-90 transition-none disabled:opacity-50 text-sm whitespace-nowrap"
+                  >
+                    {applyingUpdate ? t('updating') : t('applyUpdate')}
+                  </button>
+                ) : (
+                  <div className="text-xs text-[#FF0000] font-mono font-bold max-w-xs">
+                    {t('noUpdateAsset')}
+                  </div>
+                )}
               </div>
 
               {updateStatus.release_notes && (

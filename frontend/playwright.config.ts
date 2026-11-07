@@ -11,7 +11,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'node ./tests/start-real-dashboard.mjs',
+    command: process.env.PW_WEBSERVER_COMMAND ?? 'node ./tests/start-real-dashboard.mjs',
     url: 'http://127.0.0.1:19183',
     reuseExistingServer: !process.env.CI,
     timeout: 60000,

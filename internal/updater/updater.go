@@ -5,10 +5,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -19,9 +21,8 @@ import (
 
 // Default repository
 var (
-	GitHubRepo     = "icebear0828/token-ray"
-	GitHubAPIBase  = "https://api.github.com"
-	CurrentVersion = "v1.8.1"
+	GitHubRepo    = "icebear0828/token-ray"
+	GitHubAPIBase = "https://api.github.com"
 )
 
 type Asset struct {
@@ -47,6 +48,7 @@ type UpdateStatus struct {
 	PublishedAt    string `json:"published_at"`
 	DownloadURL    string `json:"download_url"`
 	AssetName      string `json:"asset_name"`
+	Error          string `json:"error,omitempty"`
 }
 
 // Client configures update check and apply operations
@@ -175,12 +177,37 @@ func (c *Client) CheckForUpdates(currentVersion string) (*Release, error) {
 	return nil, nil
 }
 
+// nonBinaryAssetSuffixes lists release assets that are never runnable binaries,
+// so they must not be selected as a self-update payload.
+var nonBinaryAssetSuffixes = []string{
+	".sha256", ".sha512", ".sha256sum", ".sha512sum", ".md5",
+	".sig", ".asc", ".pem", ".crt", ".cert",
+	".txt", ".md", ".json", ".sbom", ".spdx",
+	".deb", ".rpm", ".msi", ".pkg", ".dmg",
+}
+
+func isArchiveName(name string) bool {
+	return strings.HasSuffix(name, ".tar.gz") ||
+		strings.HasSuffix(name, ".tgz") ||
+		strings.HasSuffix(name, ".zip")
+}
+
+func isBinaryAssetName(name string) bool {
+	lower := strings.ToLower(name)
+	for _, suffix := range nonBinaryAssetSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return false
+		}
+	}
+	return true
+}
+
 // MatchAsset finds the most appropriate release asset for the target OS and Architecture.
 func MatchAsset(assets []Asset, goos, goarch string) *Asset {
-	// 1. First priority: Raw binary matching target platform (not an archive)
+	// 1. First priority: a raw binary for the exact target platform.
 	for i := range assets {
 		name := strings.ToLower(assets[i].Name)
-		if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".dmg") {
+		if isArchiveName(name) || !isBinaryAssetName(name) {
 			continue
 		}
 		if strings.Contains(name, goos) && strings.Contains(name, goarch) {
@@ -188,9 +215,12 @@ func MatchAsset(assets []Asset, goos, goarch string) *Asset {
 		}
 	}
 
-	// 2. Second priority: Standard archives published by release workflows
+	// 2. Second priority: archives published by the release workflow.
 	for i := range assets {
 		name := strings.ToLower(assets[i].Name)
+		if !isBinaryAssetName(name) {
+			continue
+		}
 		switch {
 		case goos == "darwin" && goarch == "arm64":
 			if strings.Contains(name, "macos-m-series") || (strings.Contains(name, "darwin") && strings.Contains(name, "arm64")) {
@@ -205,13 +235,38 @@ func MatchAsset(assets []Asset, goos, goarch string) *Asset {
 				return &assets[i]
 			}
 		case goos == "windows" && goarch == "amd64":
-			if strings.Contains(name, "windows") {
+			if strings.Contains(name, "windows") && (isArchiveName(name) || strings.HasSuffix(name, ".exe")) {
 				return &assets[i]
 			}
 		}
 	}
 
 	return nil
+}
+
+// scoreExecutableEntry ranks archive entries so the main binary wins over
+// helpers, uninstallers, or unrelated files with a similar name.
+func scoreExecutableEntry(lowerName string) int {
+	base := path.Base(lowerName)
+	score := 0
+	switch {
+	case base == "ai-flight-dashboard" || base == "ai-flight-dashboard.exe":
+		score += 100
+	case strings.HasSuffix(base, "dashboard"):
+		score += 20
+	}
+	if strings.Contains(lowerName, "contents/macos/") {
+		score += 50
+	}
+	if strings.HasSuffix(base, ".exe") {
+		score += 10
+	}
+	for _, bad := range []string{"helper", "crashpad", "uninstall", "installer", "updater"} {
+		if strings.Contains(base, bad) {
+			score -= 100
+		}
+	}
+	return score
 }
 
 // ExtractBinaryFromArchive unpacks .tar.gz or .zip in-memory to find the executable binary.
@@ -227,7 +282,7 @@ func ExtractBinaryFromArchive(r io.Reader, assetName string) (io.Reader, error) 
 
 		tr := tar.NewReader(gzr)
 		var bestMatch bytes.Buffer
-		found := false
+		bestScore := 0
 
 		for {
 			hdr, err := tr.Next()
@@ -241,20 +296,18 @@ func ExtractBinaryFromArchive(r io.Reader, assetName string) (io.Reader, error) 
 				continue
 			}
 
-			cleanName := strings.ToLower(hdr.Name)
-			// Match "ai-flight-dashboard", "dashboard", or inside "Contents/MacOS/<exec>"
-			if strings.HasSuffix(cleanName, "ai-flight-dashboard") ||
-				strings.HasSuffix(cleanName, "dashboard") ||
-				strings.Contains(cleanName, "contents/macos/") {
-				if _, err := io.Copy(&bestMatch, tr); err != nil {
-					return nil, fmt.Errorf("failed to read tar entry: %w", err)
-				}
-				found = true
-				break
+			score := scoreExecutableEntry(strings.ToLower(hdr.Name))
+			if score <= bestScore {
+				continue
 			}
+			bestMatch.Reset()
+			if _, err := io.Copy(&bestMatch, tr); err != nil {
+				return nil, fmt.Errorf("failed to read tar entry %s: %w", hdr.Name, err)
+			}
+			bestScore = score
 		}
 
-		if !found {
+		if bestScore <= 0 {
 			return nil, fmt.Errorf("no executable binary found inside archive %s", assetName)
 		}
 		return bytes.NewReader(bestMatch.Bytes()), nil
@@ -272,27 +325,57 @@ func ExtractBinaryFromArchive(r io.Reader, assetName string) (io.Reader, error) 
 			return nil, fmt.Errorf("zip reader failed: %w", err)
 		}
 
+		var best *zip.File
+		bestScore := 0
 		for _, f := range zr.File {
-			cleanName := strings.ToLower(f.Name)
-			if strings.HasSuffix(cleanName, ".exe") || strings.HasSuffix(cleanName, "dashboard") {
-				rc, err := f.Open()
-				if err != nil {
-					return nil, fmt.Errorf("failed to open zip file %s: %w", f.Name, err)
-				}
-				defer rc.Close()
-
-				var buf bytes.Buffer
-				if _, err := io.Copy(&buf, rc); err != nil {
-					return nil, fmt.Errorf("failed to copy zip file %s: %w", f.Name, err)
-				}
-				return bytes.NewReader(buf.Bytes()), nil
+			if f.FileInfo().IsDir() {
+				continue
+			}
+			score := scoreExecutableEntry(strings.ToLower(f.Name))
+			if score > bestScore {
+				best = f
+				bestScore = score
 			}
 		}
-		return nil, fmt.Errorf("no executable binary found inside zip %s", assetName)
+		if best == nil {
+			return nil, fmt.Errorf("no executable binary found inside zip %s", assetName)
+		}
+
+		rc, err := best.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open zip file %s: %w", best.Name, err)
+		}
+		defer rc.Close()
+
+		var buf bytes.Buffer
+		if _, err := io.Copy(&buf, rc); err != nil {
+			return nil, fmt.Errorf("failed to copy zip file %s: %w", best.Name, err)
+		}
+		return bytes.NewReader(buf.Bytes()), nil
 	}
 
 	// Raw binary: return as is
 	return r, nil
+}
+
+// looksLikeExecutable rejects payloads that are clearly not runnable on any
+// supported platform (e.g. a checksum file matched by mistake).
+func looksLikeExecutable(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	if data[0] == 0x7f && data[1] == 'E' && data[2] == 'L' && data[3] == 'F' {
+		return true // ELF (linux)
+	}
+	if data[0] == 'M' && data[1] == 'Z' {
+		return true // PE (windows)
+	}
+	switch binary.BigEndian.Uint32(data[:4]) {
+	case 0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, // Mach-O
+		0xcafebabe, 0xbebafeca, 0xcafebabf, 0xbfbafeca: // Mach-O universal
+		return true
+	}
+	return false
 }
 
 // ApplyUpdate downloads the platform asset and applies it in-place using selfupdate.
@@ -337,8 +420,20 @@ func (c *Client) ApplyUpdate(release *Release) error {
 		return fmt.Errorf("failed to extract binary from archive: %w", err)
 	}
 
+	const maxBinarySize = 256 << 20
+	data, err := io.ReadAll(io.LimitReader(binaryReader, maxBinarySize+1))
+	if err != nil {
+		return fmt.Errorf("failed to read extracted binary: %w", err)
+	}
+	if int64(len(data)) > maxBinarySize {
+		return fmt.Errorf("extracted binary exceeds %d bytes", maxBinarySize)
+	}
+	if !looksLikeExecutable(data) {
+		return fmt.Errorf("downloaded asset %s does not look like a runnable binary", asset.Name)
+	}
+
 	// In-place binary replacement
-	if err := selfupdate.Apply(binaryReader, selfupdate.Options{}); err != nil {
+	if err := selfupdate.Apply(bytes.NewReader(data), selfupdate.Options{}); err != nil {
 		return fmt.Errorf("selfupdate failed: %w", err)
 	}
 

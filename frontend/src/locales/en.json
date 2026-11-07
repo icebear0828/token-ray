@@ -114,5 +114,7 @@
   "updateFailed": "Update failed",
   "releaseNotes": "Release Notes",
   "viewDetails": "View Details",
-  "platform": "Platform"
+  "platform": "Platform",
+  "unknown": "unknown",
+  "noUpdateAsset": "No update package is available for your platform."
 }
