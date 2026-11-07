@@ -1,0 +1,76 @@
+name: Sync Model Pricing
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Daily at 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  sync:
+    name: Sync Pricing from Upstream
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run pricing synchronization
+        run: node scripts/sync_pricing.mjs
+
+      - name: Check for pricing table updates
+        id: git-check
+        run: |
+          if git diff --quiet cmd/dashboard/pricing_table.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Pricing table is up to date."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Pricing updates detected."
+          fi
+
+      - name: Create pull request for pricing updates
+        if: steps.git-check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH_NAME="chore/sync-pricing-upstream-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH_NAME"
+          git add cmd/dashboard/pricing_table.json
+          git commit -m "chore(pricing): sync latest model prices from upstream"
+          git push -u origin "$BRANCH_NAME" --force
+
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --json number --jq '.[0].number')
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for $BRANCH_NAME."
+          else
+            gh pr create \
+              --title "chore(pricing): sync model prices from upstream registry" \
+              --body "$(cat <<'EOF'
+## Summary
+Automated daily synchronization of model pricing from upstream registry.
+
+## Release notes zh-CN
+- 同步上游模型定价表的最新价格与新增模型支持
+
+## Release notes en-US
+- Sync latest model prices and newly added models from upstream registry
+EOF
+)" \
+              --base main \
+              --head "$BRANCH_NAME"
+          fi
