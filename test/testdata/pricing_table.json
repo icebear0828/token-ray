@@ -6,6 +6,24 @@
       "cache_creation_price_per_m": 6.25,
       "output_price_per_m": 25
     },
+    "claude-sonnet-4-5": {
+      "input_price_per_m": 3,
+      "cached_price_per_m": 0.3,
+      "cache_creation_price_per_m": 3.75,
+      "output_price_per_m": 15
+    },
+    "gemini-3.1-flash-lite": {
+      "input_price_per_m": 0.1,
+      "cached_price_per_m": 0.01,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 0.4
+    },
+    "deepseek-chat": {
+      "input_price_per_m": 0.27,
+      "cached_price_per_m": 0.027,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 1.1
+    },
     "gemini-2.5-pro": {
       "input_price_per_m": 1.25,
       "cached_price_per_m": 0.125,
