@@ -82,6 +82,9 @@ func NewHandlerWithLANController(database *db.DB, calc *calculator.Calculator, w
 	})
 
 	mux.HandleFunc("/api/system/logs", handleSystemLogs)
+	mux.HandleFunc("/api/system/version", handleSystemVersion)
+	mux.HandleFunc("/api/system/update/check", handleUpdateCheck)
+	mux.HandleFunc("/api/system/update/apply", authMiddleware(token, handleUpdateApply))
 
 	mux.HandleFunc("/api/sync/pull", syncAuthMiddleware(token, func(w http.ResponseWriter, r *http.Request) {
 		handleSyncPull(w, r, database)

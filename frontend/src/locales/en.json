@@ -100,5 +100,19 @@
   "less": "LESS",
   "more": "MORE",
   "noChartData": "NO CHART DATA",
-  "total": "TOTAL"
+  "total": "TOTAL",
+  "versionAndUpdates": "Version & Auto-Update",
+  "currentVersion": "Current Version",
+  "latestVersion": "Latest Version",
+  "checkForUpdates": "Check for Updates",
+  "checkingUpdates": "Checking for updates...",
+  "alreadyLatest": "You are on the latest version",
+  "newVersionAvailable": "New Version Available",
+  "applyUpdate": "Apply Update",
+  "updating": "Updating binary...",
+  "updateSuccess": "Update applied! Please restart to run new version.",
+  "updateFailed": "Update failed",
+  "releaseNotes": "Release Notes",
+  "viewDetails": "View Details",
+  "platform": "Platform"
 }

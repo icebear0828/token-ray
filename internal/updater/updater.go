@@ -1,128 +1,358 @@
 package updater
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/minio/selfupdate"
 )
 
-// GitHubRepo is the repository to check for releases.
-// Override at build time via ldflags if needed.
-var GitHubRepo = "icebear0828/ai-flight-dashboard"
+// Default repository
+var (
+	GitHubRepo     = "icebear0828/token-ray"
+	GitHubAPIBase  = "https://api.github.com"
+	CurrentVersion = "v1.8.1"
+)
 
 type Asset struct {
-	Name string `json:"name"`
-	URL  string `json:"url"` // API URL for downloading
+	Name               string `json:"name"`
+	URL                string `json:"url"` // API download URL
+	BrowserDownloadURL string `json:"browser_download_url"`
+	Size               int64  `json:"size"`
 }
 
 type Release struct {
-	TagName string  `json:"tag_name"`
-	Name    string  `json:"name"`
-	Body    string  `json:"body"`
-	Assets  []Asset `json:"assets"`
+	TagName     string    `json:"tag_name"`
+	Name        string    `json:"name"`
+	Body        string    `json:"body"`
+	PublishedAt time.Time `json:"published_at"`
+	Assets      []Asset   `json:"assets"`
 }
 
-func CheckForUpdates(currentVersion, token string) (*Release, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", GitHubRepo)
+type UpdateStatus struct {
+	CurrentVersion string `json:"current_version"`
+	LatestVersion  string `json:"latest_version"`
+	HasUpdate      bool   `json:"has_update"`
+	ReleaseNotes   string `json:"release_notes"`
+	PublishedAt    string `json:"published_at"`
+	DownloadURL    string `json:"download_url"`
+	AssetName      string `json:"asset_name"`
+}
+
+// Client configures update check and apply operations
+type Client struct {
+	BaseURL    string
+	Repo       string
+	Token      string
+	HTTPClient *http.Client
+}
+
+type Option func(*Client)
+
+func WithBaseURL(url string) Option {
+	return func(c *Client) {
+		c.BaseURL = strings.TrimRight(url, "/")
+	}
+}
+
+func WithRepo(repo string) Option {
+	return func(c *Client) {
+		c.Repo = repo
+	}
+}
+
+func WithToken(token string) Option {
+	return func(c *Client) {
+		c.Token = token
+	}
+}
+
+func WithHTTPClient(client *http.Client) Option {
+	return func(c *Client) {
+		c.HTTPClient = client
+	}
+}
+
+func NewClient(opts ...Option) *Client {
+	c := &Client{
+		BaseURL:    GitHubAPIBase,
+		Repo:       GitHubRepo,
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
+}
+
+// parseSemver parses "1.2.3" into [1, 2, 3].
+func parseSemver(v string) []int {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	parts := strings.Split(v, ".")
+	res := make([]int, 0, len(parts))
+	for _, p := range parts {
+		// Handle potential suffix like 1.2.3-beta
+		subParts := strings.Split(p, "-")
+		if n, err := strconv.Atoi(subParts[0]); err == nil {
+			res = append(res, n)
+		} else {
+			res = append(res, 0)
+		}
+	}
+	for len(res) < 3 {
+		res = append(res, 0)
+	}
+	return res
+}
+
+// IsNewerVersion returns true if remote is strictly greater than local.
+func IsNewerVersion(local, remote string) bool {
+	localNorm := strings.TrimPrefix(strings.TrimSpace(local), "v")
+	remoteNorm := strings.TrimPrefix(strings.TrimSpace(remote), "v")
+
+	if remoteNorm == "" {
+		return false
+	}
+	if localNorm == "" || localNorm == "dev" || localNorm == "0.0.0" {
+		return true
+	}
+
+	lParts := parseSemver(localNorm)
+	rParts := parseSemver(remoteNorm)
+
+	for i := 0; i < 3; i++ {
+		if rParts[i] > lParts[i] {
+			return true
+		}
+		if rParts[i] < lParts[i] {
+			return false
+		}
+	}
+	return false
+}
+
+// CheckForUpdates queries the latest release and checks if a newer version exists.
+func (c *Client) CheckForUpdates(currentVersion string) (*Release, error) {
+	url := fmt.Sprintf("%s/repos/%s/releases/latest", c.BaseURL, c.Repo)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create update request: %w", err)
 	}
 
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("failed to check for updates: status %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to check for updates: HTTP %d", resp.StatusCode)
 	}
 
 	var rel Release
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode release response: %w", err)
 	}
 
-	// Normalize "v" prefix for comparison (e.g. "v1.2.0" vs "1.2.0")
-	remoteVersion := strings.TrimPrefix(rel.TagName, "v")
-	localVersion := strings.TrimPrefix(currentVersion, "v")
-
-	if remoteVersion != "" && remoteVersion != localVersion {
+	if IsNewerVersion(currentVersion, rel.TagName) {
 		return &rel, nil
 	}
 
 	return nil, nil
 }
 
-// ApplyUpdate attempts to download the matching asset and replace the running binary
-func ApplyUpdate(release *Release, token string) error {
-	// Look for asset name like "dashboard-darwin-arm64" or "dashboard-windows-amd64.exe"
-	// Also accept "ai-flight-dashboard-..."
-	targetSubstrings := []string{runtime.GOOS, runtime.GOARCH}
-	
-	var downloadURL string
-	for _, asset := range release.Assets {
-		// Ignore compressed bundles for in-place binary updates
-		if strings.HasSuffix(asset.Name, ".zip") || strings.HasSuffix(asset.Name, ".dmg") || strings.HasSuffix(asset.Name, ".tar.gz") {
+// MatchAsset finds the most appropriate release asset for the target OS and Architecture.
+func MatchAsset(assets []Asset, goos, goarch string) *Asset {
+	// 1. First priority: Raw binary matching target platform (not an archive)
+	for i := range assets {
+		name := strings.ToLower(assets[i].Name)
+		if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".dmg") {
 			continue
 		}
-		
-		matches := true
-		for _, sub := range targetSubstrings {
-			if !strings.Contains(asset.Name, sub) {
-				matches = false
-				break
-			}
-		}
-		if matches {
-			downloadURL = asset.URL
-			break
+		if strings.Contains(name, goos) && strings.Contains(name, goarch) {
+			return &assets[i]
 		}
 	}
 
+	// 2. Second priority: Standard archives published by release workflows
+	for i := range assets {
+		name := strings.ToLower(assets[i].Name)
+		switch {
+		case goos == "darwin" && goarch == "arm64":
+			if strings.Contains(name, "macos-m-series") || (strings.Contains(name, "darwin") && strings.Contains(name, "arm64")) {
+				return &assets[i]
+			}
+		case goos == "darwin" && goarch == "amd64":
+			if strings.Contains(name, "macos-intel") || (strings.Contains(name, "darwin") && strings.Contains(name, "amd64")) {
+				return &assets[i]
+			}
+		case goos == "linux" && goarch == "amd64":
+			if strings.Contains(name, "linux") && (strings.Contains(name, "amd64") || strings.HasSuffix(name, "linux.tar.gz")) {
+				return &assets[i]
+			}
+		case goos == "windows" && goarch == "amd64":
+			if strings.Contains(name, "windows") {
+				return &assets[i]
+			}
+		}
+	}
+
+	return nil
+}
+
+// ExtractBinaryFromArchive unpacks .tar.gz or .zip in-memory to find the executable binary.
+func ExtractBinaryFromArchive(r io.Reader, assetName string) (io.Reader, error) {
+	lowerName := strings.ToLower(assetName)
+
+	if strings.HasSuffix(lowerName, ".tar.gz") || strings.HasSuffix(lowerName, ".tgz") {
+		gzr, err := gzip.NewReader(r)
+		if err != nil {
+			return nil, fmt.Errorf("gzip unpack failed: %w", err)
+		}
+		defer gzr.Close()
+
+		tr := tar.NewReader(gzr)
+		var bestMatch bytes.Buffer
+		found := false
+
+		for {
+			hdr, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return nil, fmt.Errorf("tar read error: %w", err)
+			}
+			if hdr.Typeflag != tar.TypeReg {
+				continue
+			}
+
+			cleanName := strings.ToLower(hdr.Name)
+			// Match "ai-flight-dashboard", "dashboard", or inside "Contents/MacOS/<exec>"
+			if strings.HasSuffix(cleanName, "ai-flight-dashboard") ||
+				strings.HasSuffix(cleanName, "dashboard") ||
+				strings.Contains(cleanName, "contents/macos/") {
+				if _, err := io.Copy(&bestMatch, tr); err != nil {
+					return nil, fmt.Errorf("failed to read tar entry: %w", err)
+				}
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return nil, fmt.Errorf("no executable binary found inside archive %s", assetName)
+		}
+		return bytes.NewReader(bestMatch.Bytes()), nil
+	}
+
+	if strings.HasSuffix(lowerName, ".zip") {
+		// Read entire zip into buffer for zip.Reader
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read zip buffer: %w", err)
+		}
+
+		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			return nil, fmt.Errorf("zip reader failed: %w", err)
+		}
+
+		for _, f := range zr.File {
+			cleanName := strings.ToLower(f.Name)
+			if strings.HasSuffix(cleanName, ".exe") || strings.HasSuffix(cleanName, "dashboard") {
+				rc, err := f.Open()
+				if err != nil {
+					return nil, fmt.Errorf("failed to open zip file %s: %w", f.Name, err)
+				}
+				defer rc.Close()
+
+				var buf bytes.Buffer
+				if _, err := io.Copy(&buf, rc); err != nil {
+					return nil, fmt.Errorf("failed to copy zip file %s: %w", f.Name, err)
+				}
+				return bytes.NewReader(buf.Bytes()), nil
+			}
+		}
+		return nil, fmt.Errorf("no executable binary found inside zip %s", assetName)
+	}
+
+	// Raw binary: return as is
+	return r, nil
+}
+
+// ApplyUpdate downloads the platform asset and applies it in-place using selfupdate.
+func (c *Client) ApplyUpdate(release *Release) error {
+	asset := MatchAsset(release.Assets, runtime.GOOS, runtime.GOARCH)
+	if asset == nil {
+		return fmt.Errorf("no suitable asset found for %s/%s in release %s", runtime.GOOS, runtime.GOARCH, release.TagName)
+	}
+
+	downloadURL := asset.URL
 	if downloadURL == "" {
-		return fmt.Errorf("no suitable binary asset found for %s/%s", runtime.GOOS, runtime.GOARCH)
+		downloadURL = asset.BrowserDownloadURL
+	}
+	if downloadURL == "" {
+		return fmt.Errorf("no download URL for asset %s", asset.Name)
 	}
 
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create download request: %w", err)
+		return fmt.Errorf("failed to create asset download request: %w", err)
 	}
 
-	// Request raw binary from GitHub API
 	req.Header.Set("Accept", "application/octet-stream")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 
-	// Timeout long enough for a binary download
-	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Do(req)
+	downloadClient := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := downloadClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to download update: %w", err)
+		return fmt.Errorf("failed to download release asset: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status code downloading update: %d", resp.StatusCode)
+		return fmt.Errorf("bad status code downloading update asset: %d", resp.StatusCode)
 	}
 
-	// Apply the update in-place
-	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
+	// Extract binary stream if it's an archive
+	binaryReader, err := ExtractBinaryFromArchive(resp.Body, asset.Name)
 	if err != nil {
-		return fmt.Errorf("failed to apply update: %w", err)
+		return fmt.Errorf("failed to extract binary from archive: %w", err)
+	}
+
+	// In-place binary replacement
+	if err := selfupdate.Apply(binaryReader, selfupdate.Options{}); err != nil {
+		return fmt.Errorf("selfupdate failed: %w", err)
 	}
 
 	return nil
+}
+
+// Global helper wrappers (backward compatibility)
+
+func CheckForUpdates(currentVersion, token string) (*Release, error) {
+	client := NewClient(WithToken(token))
+	return client.CheckForUpdates(currentVersion)
+}
+
+func ApplyUpdate(release *Release, token string) error {
+	client := NewClient(WithToken(token))
+	return client.ApplyUpdate(release)
 }

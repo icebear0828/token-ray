@@ -1,132 +1,262 @@
 package updater_test
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 
 	"ai-flight-dashboard/internal/updater"
 )
 
-func TestCheckForUpdates_NewVersionAvailable(t *testing.T) {
-	release := updater.Release{
-		TagName: "v2.0.0",
-		Name:    "Release 2.0.0",
-		Body:    "New features",
-		Assets: []updater.Asset{
-			{Name: "dashboard-darwin-arm64", URL: "https://example.com/download"},
-		},
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(release)
-	}))
-	defer srv.Close()
-
-	// Override repo URL by pointing to test server
-	origRepo := updater.GitHubRepo
-	updater.GitHubRepo = "test/repo"
-	defer func() { updater.GitHubRepo = origRepo }()
-
-	// We can't easily redirect the HTTP client to our test server via GitHubRepo alone,
-	// so instead we test the version comparison logic through the public API indirectly.
-	// The full integration would need a custom HTTP client injection.
-	// For now, verify the exported types and constants work correctly.
-	t.Log("CheckForUpdates type signature verified via compilation")
-}
-
-func TestApplyUpdate_AssetMatching(t *testing.T) {
+func TestCheckForUpdates_SemanticComparison(t *testing.T) {
 	tests := []struct {
-		name     string
-		assets   []updater.Asset
-		wantNone bool // expect "no suitable binary" error
+		name           string
+		currentVersion string
+		remoteTag      string
+		wantUpdate     bool
 	}{
 		{
-			name: "matching binary",
-			assets: []updater.Asset{
-				{Name: "dashboard-linux-amd64", URL: "https://example.com/bin"},
-				{Name: "dashboard-darwin-arm64", URL: "https://example.com/mac"},
-			},
-			wantNone: false, // at least one should match current runtime
+			name:           "newer remote patch",
+			currentVersion: "v1.8.1",
+			remoteTag:      "v1.8.2",
+			wantUpdate:     true,
 		},
 		{
-			name: "only compressed bundles",
-			assets: []updater.Asset{
-				{Name: "dashboard-darwin-arm64.tar.gz", URL: "https://example.com/a"},
-				{Name: "dashboard-darwin-arm64.zip", URL: "https://example.com/b"},
-				{Name: "dashboard-darwin-arm64.dmg", URL: "https://example.com/c"},
-			},
-			wantNone: true, // all are compressed, should be skipped
+			name:           "newer remote minor",
+			currentVersion: "v1.8.1",
+			remoteTag:      "v1.9.0",
+			wantUpdate:     true,
 		},
 		{
-			name:     "no assets at all",
-			assets:   []updater.Asset{},
-			wantNone: true,
+			name:           "same version with and without v prefix",
+			currentVersion: "v1.8.1",
+			remoteTag:      "1.8.1",
+			wantUpdate:     false,
 		},
 		{
-			name: "wrong platform",
-			assets: []updater.Asset{
-				{Name: "dashboard-windows-386", URL: "https://example.com/win"},
-			},
-			wantNone: true, // unlikely to match darwin/arm64
+			name:           "older remote version",
+			currentVersion: "v1.8.2",
+			remoteTag:      "v1.8.1",
+			wantUpdate:     false,
+		},
+		{
+			name:           "development or zero local version",
+			currentVersion: "dev",
+			remoteTag:      "v1.8.1",
+			wantUpdate:     true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// We can't actually apply the update (no real binary),
-			// but we can verify the error message for asset matching logic.
-			release := &updater.Release{
-				TagName: "v9.9.9",
-				Assets:  tt.assets,
+			got := updater.IsNewerVersion(tt.currentVersion, tt.remoteTag)
+			if got != tt.wantUpdate {
+				t.Errorf("IsNewerVersion(%q, %q) = %v; want %v", tt.currentVersion, tt.remoteTag, got, tt.wantUpdate)
 			}
-
-			err := updater.ApplyUpdate(release, "")
-			if tt.wantNone {
-				if err == nil {
-					t.Error("expected error for no suitable binary, got nil")
-				}
-			}
-			// When wantNone is false, we can't test success without a real binary server
 		})
 	}
 }
 
-func TestCheckForUpdates_AlreadyLatest(t *testing.T) {
-	release := updater.Release{
-		TagName: "v1.0.0",
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(release)
-	}))
-	defer srv.Close()
-
-	// Calling with the same version should return nil
-	// (can't fully test without HTTP client injection, but type-checks compile-time correctness)
-	t.Log("Version comparison logic verified by type compilation")
-}
-
-func TestRelease_VersionNormalization(t *testing.T) {
-	// Verify that the Release struct fields are accessible and correct
-	r := updater.Release{
-		TagName: "v1.2.3",
-		Name:    "Test Release",
-		Body:    "Release notes",
+func TestCheckForUpdates_HTTPClient(t *testing.T) {
+	mockRelease := updater.Release{
+		TagName: "v1.9.0",
+		Name:    "v1.9.0 Release",
+		Body:    "## Highlights\n- Automated updates",
 		Assets: []updater.Asset{
-			{Name: "binary-darwin-arm64", URL: "https://example.com/download"},
+			{Name: "ai-flight-dashboard-macos-m-series.tar.gz", URL: "https://example.com/mac"},
 		},
 	}
 
-	if r.TagName != "v1.2.3" {
-		t.Errorf("unexpected TagName: %s", r.TagName)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/test/repo/releases/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(mockRelease)
+	}))
+	defer srv.Close()
+
+	client := updater.NewClient(
+		updater.WithBaseURL(srv.URL),
+		updater.WithRepo("test/repo"),
+	)
+
+	// Test update found
+	rel, err := client.CheckForUpdates("v1.8.1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(r.Assets) != 1 {
-		t.Errorf("expected 1 asset, got %d", len(r.Assets))
+	if rel == nil {
+		t.Fatal("expected release, got nil")
 	}
-	if r.Assets[0].Name != "binary-darwin-arm64" {
-		t.Errorf("unexpected asset name: %s", r.Assets[0].Name)
+	if rel.TagName != "v1.9.0" {
+		t.Errorf("expected tag v1.9.0, got %s", rel.TagName)
 	}
+
+	// Test already up-to-date
+	relSame, err := client.CheckForUpdates("v1.9.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if relSame != nil {
+		t.Errorf("expected nil when up to date, got %+v", relSame)
+	}
+}
+
+func TestMatchAsset(t *testing.T) {
+	assets := []updater.Asset{
+		{Name: "ai-flight-dashboard-linux.tar.gz", URL: "https://example.com/linux-tar"},
+		{Name: "ai-flight-dashboard-macos-m-series.tar.gz", URL: "https://example.com/mac-arm64"},
+		{Name: "ai-flight-dashboard-macos-intel.tar.gz", URL: "https://example.com/mac-amd64"},
+		{Name: "ai-flight-dashboard-windows.zip", URL: "https://example.com/win-zip"},
+		{Name: "ai-flight-dashboard-linux-amd64", URL: "https://example.com/linux-bin"},
+	}
+
+	// For linux amd64, prefer raw binary if present
+	linuxMatch := updater.MatchAsset(assets, "linux", "amd64")
+	if linuxMatch == nil || linuxMatch.Name != "ai-flight-dashboard-linux-amd64" {
+		t.Fatalf("expected raw binary match for linux amd64, got %+v", linuxMatch)
+	}
+
+	// For darwin arm64, match macos-m-series.tar.gz
+	macArmMatch := updater.MatchAsset(assets, "darwin", "arm64")
+	if macArmMatch == nil || macArmMatch.Name != "ai-flight-dashboard-macos-m-series.tar.gz" {
+		t.Fatalf("expected macos-m-series match for darwin arm64, got %+v", macArmMatch)
+	}
+
+	// For darwin amd64, match macos-intel.tar.gz
+	macAmdMatch := updater.MatchAsset(assets, "darwin", "amd64")
+	if macAmdMatch == nil || macAmdMatch.Name != "ai-flight-dashboard-macos-intel.tar.gz" {
+		t.Fatalf("expected macos-intel match for darwin amd64, got %+v", macAmdMatch)
+	}
+
+	// For windows amd64, match windows.zip
+	winMatch := updater.MatchAsset(assets, "windows", "amd64")
+	if winMatch == nil || winMatch.Name != "ai-flight-dashboard-windows.zip" {
+		t.Fatalf("expected windows.zip match for windows amd64, got %+v", winMatch)
+	}
+
+	// Unknown architecture returns nil
+	unknownMatch := updater.MatchAsset(assets, "freebsd", "riscv64")
+	if unknownMatch != nil {
+		t.Fatalf("expected nil for unsupported platform, got %+v", unknownMatch)
+	}
+}
+
+func TestExtractBinary_TarGz(t *testing.T) {
+	expectedContent := []byte("#!/bin/sh\necho 'hello from test binary'\n")
+
+	// Create in-memory tar.gz containing an app bundle structure
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	// Add dummy README
+	readme := []byte("readme content")
+	_ = tw.WriteHeader(&tar.Header{
+		Name:     "README.txt",
+		Mode:     0644,
+		Size:     int64(len(readme)),
+		Typeflag: tar.TypeReg,
+	})
+	_, _ = tw.Write(readme)
+
+	// Add target binary in macOS App bundle
+	_ = tw.WriteHeader(&tar.Header{
+		Name:     "AI Flight Dashboard.app/Contents/MacOS/ai-flight-dashboard",
+		Mode:     0755,
+		Size:     int64(len(expectedContent)),
+		Typeflag: tar.TypeReg,
+	})
+	_, _ = tw.Write(expectedContent)
+
+	_ = tw.Close()
+	_ = gw.Close()
+
+	extracted, err := updater.ExtractBinaryFromArchive(&buf, "ai-flight-dashboard-macos-m-series.tar.gz")
+	if err != nil {
+		t.Fatalf("failed to extract from tar.gz: %v", err)
+	}
+
+	gotBytes, err := io.ReadAll(extracted)
+	if err != nil {
+		t.Fatalf("failed to read extracted bytes: %v", err)
+	}
+
+	if !bytes.Equal(gotBytes, expectedContent) {
+		t.Errorf("extracted content mismatch; got %q, want %q", string(gotBytes), string(expectedContent))
+	}
+}
+
+func TestExtractBinary_Zip(t *testing.T) {
+	expectedContent := []byte("MZ Windows Binary Executable Content")
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	// Add license
+	licW, _ := zw.Create("LICENSE.txt")
+	_, _ = licW.Write([]byte("MIT License"))
+
+	// Add executable
+	exeW, _ := zw.Create("ai-flight-dashboard.exe")
+	_, _ = exeW.Write(expectedContent)
+
+	_ = zw.Close()
+
+	extracted, err := updater.ExtractBinaryFromArchive(&buf, "ai-flight-dashboard-windows.zip")
+	if err != nil {
+		t.Fatalf("failed to extract from zip: %v", err)
+	}
+
+	gotBytes, err := io.ReadAll(extracted)
+	if err != nil {
+		t.Fatalf("failed to read extracted bytes: %v", err)
+	}
+
+	if !bytes.Equal(gotBytes, expectedContent) {
+		t.Errorf("extracted content mismatch; got %q, want %q", string(gotBytes), string(expectedContent))
+	}
+}
+
+func TestExtractBinary_RawBinary(t *testing.T) {
+	rawContent := []byte("raw executable bytes")
+	buf := bytes.NewReader(rawContent)
+
+	extracted, err := updater.ExtractBinaryFromArchive(buf, "ai-flight-dashboard-darwin-arm64")
+	if err != nil {
+		t.Fatalf("failed for raw binary: %v", err)
+	}
+
+	gotBytes, err := io.ReadAll(extracted)
+	if err != nil {
+		t.Fatalf("failed to read: %v", err)
+	}
+
+	if !bytes.Equal(gotBytes, rawContent) {
+		t.Errorf("content mismatch")
+	}
+}
+
+func TestCurrentRuntimeAssetMatching(t *testing.T) {
+	assets := []updater.Asset{
+		{Name: "ai-flight-dashboard-linux.tar.gz", URL: "https://example.com/linux"},
+		{Name: "ai-flight-dashboard-macos-m-series.tar.gz", URL: "https://example.com/mac-m"},
+		{Name: "ai-flight-dashboard-macos-intel.tar.gz", URL: "https://example.com/mac-intel"},
+		{Name: "ai-flight-dashboard-windows.zip", URL: "https://example.com/win"},
+	}
+
+	matched := updater.MatchAsset(assets, runtime.GOOS, runtime.GOARCH)
+	if matched == nil {
+		t.Fatalf("expected asset match for current platform %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	t.Logf("Matched asset for %s/%s: %s", runtime.GOOS, runtime.GOARCH, matched.Name)
 }

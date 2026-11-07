@@ -100,5 +100,19 @@
   "less": "少",
   "more": "多",
   "noChartData": "暂无图表数据",
-  "total": "总计"
+  "total": "总计",
+  "versionAndUpdates": "版本与自动更新",
+  "currentVersion": "当前版本",
+  "latestVersion": "最新版本",
+  "checkForUpdates": "检查更新",
+  "checkingUpdates": "正在检查更新...",
+  "alreadyLatest": "当前已是最新版本",
+  "newVersionAvailable": "发现新版本",
+  "applyUpdate": "立即更新",
+  "updating": "正在更新并热替换二进制...",
+  "updateSuccess": "更新成功！请重启服务或应用以生效新版本。",
+  "updateFailed": "更新失败",
+  "releaseNotes": "更新说明",
+  "viewDetails": "查看详情",
+  "platform": "运行平台"
 }

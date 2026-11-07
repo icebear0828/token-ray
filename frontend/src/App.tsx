@@ -205,7 +205,20 @@ export default function App() {
   const [systemLogsNotice, setSystemLogsNotice] = useState<string>("");
   const [projectsCollapsed, setProjectsCollapsed] = useState(false);
   const [collapsedModelSources, setCollapsedModelSources] = useState<Record<string, boolean>>({});
+  const [updateBanner, setUpdateBanner] = useState<{ version: string } | null>(null);
+  const [dismissedUpdate, setDismissedUpdate] = useState(false);
   const statsRequestSeqRef = useRef(0);
+
+  useEffect(() => {
+    fetch('/api/system/update/check')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { has_update?: boolean; latest_version?: string } | null) => {
+        if (data && data.has_update && data.latest_version) {
+          setUpdateBanner({ version: data.latest_version });
+        }
+      })
+      .catch(() => {});
+  }, []);
   
   useEffect(() => {
     let cancelled = false;
@@ -347,6 +360,35 @@ export default function App() {
           <span className="h-4 w-4 shrink-0 animate-pulse bg-[#000000]" aria-hidden="true"></span>
           <span>{t('loading')}</span>
         </div>
+      )}
+
+      {updateBanner && !dismissedUpdate && (
+        <aside
+          aria-label="update-notification"
+          className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-[4px] border-[#000000] bg-[#FFFF00] p-3 sm:px-4 font-mono text-xs sm:text-sm text-[#000000]"
+          style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
+        >
+          <div className="flex items-center gap-2 font-bold">
+            <span>🚀</span>
+            <span>{t('newVersionAvailable')}:</span>
+            <span className="bg-[#000000] text-[#FFFFFF] px-2 py-0.5">{updateBanner.version}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="font-bold underline uppercase hover:opacity-75 cursor-pointer"
+            >
+              {t('viewDetails')}
+            </button>
+            <button
+              onClick={() => setDismissedUpdate(true)}
+              className="font-bold text-base hover:opacity-75 cursor-pointer px-1"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </aside>
       )}
 
       {/* Header Section */}
