@@ -1,671 +1,742 @@
-import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { type TFunction } from "i18next";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { LazyBlockFallback, LazyModalFallback } from "./components/LoadingFallbacks";
 import {
-  asRecord,
-  mergeDashboardDetails,
-  mergeSummaryWithPreviousDetails,
-  normalizeDashboardData,
-  type CalendarHeatmapBucket,
-  type DashboardData,
-  type DashboardCharts,
-  type DeviceStats,
-  type DailyCostBucket,
-  type PeriodStats,
-  type SourceModelStats,
-  type SourceStats,
-  type ToolShareBucket,
-} from "./dashboardData";
-import { fmt, fmtCost, fmtPercent, num, text } from "./format";
-import { wailsWindow } from "./wails";
+  Activity,
+  AlertTriangle,
+  DollarSign,
+  Globe,
+  Laptop,
+  Loader2,
+  Pause,
+  Play,
+  Radio,
+  RefreshCw,
+  ShieldCheck,
+  Sliders,
+} from "lucide-react";
+import { fetchStats, isDesktopRuntime, togglePause } from "./api/client";
+import { ActivityHeatmap } from "./components/ActivityHeatmap";
+import { AttributionTables } from "./components/AttributionTables";
+import { DailyCostChart } from "./components/DailyCostChart";
+import { DrawerType, SlideOverDrawers } from "./components/SlideOverDrawers";
+import { SourceIcon } from "./components/SourceBadge";
+import { SourceShareChart } from "./components/SourceShareChart";
+import { TokenTaxonomyStrip } from "./components/TokenTaxonomyStrip";
+import {
+  CurrencyCode,
+  DashboardData,
+  PeriodStats,
+  TIME_WINDOWS,
+  TimeWindowLabel,
+} from "./types/telemetry";
+import {
+  calcBaseInput,
+  EXCHANGE_RATES,
+  formatCompactNumber,
+  formatCost,
+  formatExactNumber,
+  formatPercent,
+} from "./utils/formatters";
 
-const SettingsModal = lazy(() => import("./SettingsModal"));
-const Radar = lazy(() => import("./components/Radar"));
+const DEFAULT_SOURCES = ["Claude Code", "Gemini CLI", "Codex", "Antigravity"];
 
-const dateShortLabel = (date: string) => {
-  if (date.length >= 10) {
-    return date.slice(5, 10).replace('-', '/');
-  }
-  return date;
-};
-
-const weekdayIndexUTC = (date: string) => {
-  const parsed = new Date(`${date}T00:00:00Z`);
-  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getUTCDay();
-};
-
-const heatmapLevel = (tokens: number, maxTokens: number) => {
-  if (tokens <= 0 || maxTokens <= 0) return 0;
-  const ratio = tokens / maxTokens;
-  if (ratio < 0.34) return 1;
-  if (ratio < 0.67) return 2;
-  return 3;
-};
-
-const heatmapClassName = (level: number) => {
-  if (level === 3) return 'bg-[#000000]';
-  if (level === 2) return 'bg-[#888888]';
-  if (level === 1) return 'bg-[#CCCCCC]';
-  return 'bg-[#FFFFFF]';
-};
-
-function DailyCostChart({ buckets, t }: { buckets: DailyCostBucket[]; t: TFunction }) {
-  const maxCost = Math.max(0, ...buckets.map((bucket) => num(bucket.cost)));
-  const totalCost = buckets.reduce((sum, bucket) => sum + num(bucket.cost), 0);
-
-  return (
-    <article className="border-[5px] border-[#000000] bg-[#FFFFFF] p-4 sm:p-5">
-      <div className="mb-4 flex items-start justify-between gap-4 border-b-[3px] border-[#000000] pb-3">
-        <h3 className="font-display text-xl sm:text-2xl uppercase leading-none">{t('dailyCost30d')}</h3>
-        <div className="text-right font-mono text-xs uppercase">
-          <div>{t('total30dCost')}</div>
-          <div className="text-lg leading-none">{fmtCost(totalCost)}</div>
-        </div>
-      </div>
-      <div className="flex h-44 items-end gap-[3px] border-b-[3px] border-l-[3px] border-[#000000] px-2 pt-2">
-        {buckets.map((bucket) => {
-          const cost = num(bucket.cost);
-          const height = cost > 0 && maxCost > 0 ? Math.max(4, (cost / maxCost) * 100) : 0;
-          return (
-            <div key={bucket.date} className="flex h-full min-w-0 flex-1 items-end">
-              <div
-                data-testid="daily-cost-bar"
-                aria-label={`${bucket.date} ${fmtCost(cost)}`}
-                title={`${bucket.date} ${fmtCost(cost)}`}
-                className={`w-full ${height > 0 ? 'border-x-[1px] border-t-[3px] border-[#000000] bg-[#000000]' : ''}`}
-                style={{ height: `${height}%` }}
-              ></div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-3 flex items-center justify-between font-mono text-xs">
-        <span>{dateShortLabel(buckets[0]?.date ?? '')}</span>
-        <span>{t('peakDailyCost')}: {fmtCost(maxCost)}</span>
-        <span>{dateShortLabel(buckets[buckets.length - 1]?.date ?? '')}</span>
-      </div>
-    </article>
-  );
-}
-
-function CalendarHeatmap({ buckets, t }: { buckets: CalendarHeatmapBucket[]; t: TFunction }) {
-  const maxTokens = Math.max(0, ...buckets.map((bucket) => num(bucket.tokens)));
-  const firstWeekday = weekdayIndexUTC(buckets[0]?.date ?? '');
-  const columns = Math.max(1, Math.ceil((firstWeekday + buckets.length) / 7));
-
-  return (
-    <article className="border-[5px] border-[#000000] bg-[#FFFFFF] p-4 sm:p-5">
-      <div className="mb-4 flex items-start justify-between gap-4 border-b-[3px] border-[#000000] pb-3">
-        <h3 className="font-display text-xl sm:text-2xl uppercase leading-none">{t('calendarHeatmap')}</h3>
-        <div className="text-right font-mono text-xs uppercase">
-          <div>{t('maxDayTokens')}</div>
-          <div className="text-lg leading-none">{fmt(maxTokens)}</div>
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <div
-          className="grid w-fit gap-[4px]"
-          style={{
-            gridTemplateColumns: `repeat(${columns}, 16px)`,
-            gridTemplateRows: 'repeat(7, 16px)',
-          }}
-        >
-          {buckets.map((bucket, index) => {
-            const position = firstWeekday + index;
-            const level = heatmapLevel(num(bucket.tokens), maxTokens);
-            return (
-              <div
-                key={bucket.date}
-                data-testid="heatmap-cell"
-                aria-label={`${bucket.date} ${fmt(bucket.tokens)} tokens`}
-                title={`${bucket.date} / ${fmt(bucket.tokens)} tokens / ${fmtCost(bucket.cost)}`}
-                className={`h-4 w-4 border-[2px] border-[#000000] ${heatmapClassName(level)}`}
-                style={{
-                  gridColumn: Math.floor(position / 7) + 1,
-                  gridRow: (position % 7) + 1,
-                }}
-              ></div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="mt-3 flex items-center gap-2 font-mono text-xs uppercase">
-        <span>{t('less')}</span>
-        <span className="h-3 w-3 border-[2px] border-[#000000] bg-[#FFFFFF]"></span>
-        <span className="h-3 w-3 border-[2px] border-[#000000] bg-[#CCCCCC]"></span>
-        <span className="h-3 w-3 border-[2px] border-[#000000] bg-[#888888]"></span>
-        <span className="h-3 w-3 border-[2px] border-[#000000] bg-[#000000]"></span>
-        <span>{t('more')}</span>
-      </div>
-    </article>
-  );
-}
-
-function ToolShareChart({ buckets, t }: { buckets: ToolShareBucket[]; t: TFunction }) {
-  const totalTokens = buckets.reduce((sum, bucket) => sum + num(bucket.tokens), 0);
-
-  return (
-    <article className="border-[5px] border-[#000000] bg-[#FFFFFF] p-4 sm:p-5">
-      <div className="mb-4 flex items-start justify-between gap-4 border-b-[3px] border-[#000000] pb-3">
-        <h3 className="font-display text-xl sm:text-2xl uppercase leading-none">{t('toolTokenShare')}</h3>
-        <div className="text-right font-mono text-xs uppercase">
-          <div>{t('totalTokens')}</div>
-          <div className="text-lg leading-none">{fmt(totalTokens)}</div>
-        </div>
-      </div>
-      <div className="flex flex-col gap-4">
-        {buckets.length === 0 && (
-          <div className="border-[3px] border-[#000000] bg-[#F0F0F0] p-3 font-mono text-xs uppercase">{t('noChartData')}</div>
-        )}
-        {buckets.map((bucket) => {
-          const share = totalTokens > 0 ? (num(bucket.tokens) / totalTokens) * 100 : 0;
-          return (
-            <div key={bucket.source} className="font-mono text-xs sm:text-sm">
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <span className="font-bold">{bucket.source}</span>
-                <span>{fmt(bucket.tokens)} / {fmtPercent(share)}</span>
-              </div>
-              <div className="h-7 border-[3px] border-[#000000] bg-[#FFFFFF]">
-                <div className="h-full bg-[#000000]" style={{ width: `${share}%` }}></div>
-              </div>
-              <div className="mt-1 text-xs uppercase">{t('events')}: {bucket.events} / {t('subtotal')}: {fmtCost(bucket.total_cost)}</div>
-            </div>
-          );
-        })}
-      </div>
-    </article>
-  );
-}
-
-function CostIntelligenceSection({ charts, t }: { charts: DashboardCharts; t: TFunction }) {
-  return (
-    <section className="mb-12 md:mb-20">
-      <div className="mb-5 border-b-[5px] border-[#000000] pb-3">
-        <h2 className="font-display text-3xl sm:text-4xl md:text-5xl uppercase leading-none">{t('costIntelligence')}</h2>
-      </div>
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(260px,0.8fr)_minmax(280px,0.9fr)]">
-        <DailyCostChart buckets={charts.daily_costs} t={t} />
-        <CalendarHeatmap buckets={charts.calendar_heatmap} t={t} />
-        <ToolShareChart buckets={charts.tool_share} t={t} />
-      </div>
-    </section>
-  );
-}
-
-export default function App() {
+export function App() {
   const { t, i18n } = useTranslation();
-  const [data, setData] = useState<DashboardData | null>(null);
+
+  // Global Scope & View State
   const [selectedDevice, setSelectedDevice] = useState<string>("all");
   const [selectedSource, setSelectedSource] = useState<string>("");
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string>("");
-  const [isStatsLoading, setIsStatsLoading] = useState(false);
-  const [systemLogsNotice, setSystemLogsNotice] = useState<string>("");
-  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
-  const [collapsedModelSources, setCollapsedModelSources] = useState<Record<string, boolean>>({});
-  const statsRequestSeqRef = useRef(0);
-  
-  useEffect(() => {
-    let cancelled = false;
-    let inFlight = false;
+  const [selectedWindow, setSelectedWindow] = useState<TimeWindowLabel>("30d");
+  const [currency, setCurrency] = useState<CurrencyCode>("USD");
+  const [activeDrawer, setActiveDrawer] = useState<DrawerType>(null);
 
-    const statsURL = (detail: 'summary' | 'details') => {
-      const params = new URLSearchParams({ device: selectedDevice, detail });
-      if (selectedSource) params.set('source', selectedSource);
-      return "/api/stats?" + params.toString();
-    };
+  // Two-stage Telemetry State
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [isHydratingDetails, setIsHydratingDetails] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string>("");
+  const [pauseBusy, setPauseBusy] = useState<boolean>(false);
 
-    const fetchData = async (showLoading: boolean) => {
-      if (inFlight) return;
-      inFlight = true;
-      const requestSeq = statsRequestSeqRef.current + 1;
-      statsRequestSeqRef.current = requestSeq;
-      if (showLoading) {
-        setIsStatsLoading(true);
-      }
+  const requestSeqRef = useRef<number>(0);
+
+  /**
+   * Two-stage progressive fetch:
+   * Stage 1: detail=summary -> instant first paint for KPIs & charts
+   * Stage 2: detail=details -> hydrates models & projects asynchronously
+   *
+   * The details response intentionally omits periods, charts and devices, so it
+   * must be merged into the last summary rather than replacing it.
+   */
+  const loadTelemetry = useCallback(
+    async (isBackgroundPoll = false) => {
+      const seq = ++requestSeqRef.current;
+
       try {
-        const summaryRes = await fetch(statsURL('summary'));
-        if (!summaryRes.ok) {
-           throw new Error(`HTTP ${summaryRes.status}: ${await summaryRes.text()}`);
+        if (!isBackgroundPoll) {
+          setIsHydratingDetails(true);
         }
-        const summary = normalizeDashboardData(await summaryRes.json());
-        if (cancelled || requestSeq !== statsRequestSeqRef.current) return;
-        setData((prev) => showLoading ? summary : mergeSummaryWithPreviousDetails(summary, prev));
-        setErrorMsg("");
-        setIsStatsLoading(false);
+        const summaryRes = await fetchStats({
+          device: selectedDevice,
+          source: selectedSource,
+          detail: "summary",
+        });
+        if (seq !== requestSeqRef.current) return;
+        setData((prev) => {
+          const previousModels = new Map(
+            (prev?.sources ?? []).map((source) => [source.name, source.models])
+          );
+          return {
+            ...summaryRes,
+            sources: summaryRes.sources.map((source) => {
+              const models = source.models.length
+                ? source.models
+                : previousModels.get(source.name) ?? [];
+              return { ...source, models };
+            }),
+            projects: prev?.projects,
+          };
+        });
+        setLoadError("");
 
-        try {
-          const detailsRes = await fetch(statsURL('details'));
-          if (!detailsRes.ok) {
-             throw new Error(`HTTP ${detailsRes.status}: ${await detailsRes.text()}`);
-          }
-          const details = normalizeDashboardData(await detailsRes.json());
-          if (cancelled || requestSeq !== statsRequestSeqRef.current) return;
-          setData(mergeDashboardDetails(summary, details));
-        } catch (detailsError: unknown) {
-          if (cancelled || requestSeq !== statsRequestSeqRef.current) return;
-          console.warn('Failed to load stats details', detailsError);
-        }
-      } catch (e: unknown) {
-        if (cancelled || requestSeq !== statsRequestSeqRef.current) return;
-        console.error(e);
-        setErrorMsg(e instanceof Error ? e.toString() : String(e));
-      } finally {
-        inFlight = false;
-        if (!cancelled && requestSeq === statsRequestSeqRef.current) {
-          setIsStatsLoading(false);
-        }
+        const detailsRes = await fetchStats({
+          device: selectedDevice,
+          source: selectedSource,
+          detail: "details",
+        });
+        if (seq !== requestSeqRef.current) return;
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                sources:
+                  detailsRes.sources.length > 0 ? detailsRes.sources : prev.sources,
+                projects: detailsRes.projects ?? [],
+                is_paused: detailsRes.is_paused ?? prev.is_paused,
+              }
+            : detailsRes
+        );
+        setIsHydratingDetails(false);
+        setLoadError("");
+      } catch (error: unknown) {
+        if (seq !== requestSeqRef.current) return;
+        setLoadError(error instanceof Error ? error.message : String(error));
+        setIsHydratingDetails(false);
       }
-    };
-    fetchData(true);
-    const interval = setInterval(() => fetchData(false), 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [selectedDevice, selectedSource]);
+    },
+    [selectedDevice, selectedSource]
+  );
 
-  const togglePause = async () => {
-		try {
-			const res = await fetch("/api/pause", { method: "POST" });
-			if (res.ok) {
-				const json = await res.json();
-				setData(prev => prev ? { ...prev, is_paused: json.is_paused } : null);
-			}
-		} catch (e) {
-			console.error("Failed to toggle pause", e);
-		}
-	};
+  // Initial & filter-change two-stage load
+  useEffect(() => {
+    loadTelemetry(false);
+  }, [loadTelemetry]);
 
-  const toggleModelsCollapsed = (sourceName: string) => {
-    setCollapsedModelSources((prev) => ({
-      ...prev,
-      [sourceName]: !prev[sourceName],
-    }));
-  };
+  // 5-second main telemetry polling
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadTelemetry(true);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loadTelemetry]);
 
-  const openSystemLogs = async () => {
+  const handleTogglePause = async () => {
+    setPauseBusy(true);
     try {
-      const app = wailsWindow().go?.desktop?.App;
-      if (app?.OpenSystemLogs) {
-        await Promise.resolve(app.OpenSystemLogs());
-        setSystemLogsNotice(t('systemLogsOpened'));
-        return;
-      }
-
-      const res = await fetch('/api/system/logs');
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const payload = asRecord(await res.json());
-      const path = text(payload.path);
-      setSystemLogsNotice(path ? `${t('systemLogsPath')}: ${path}` : t('systemLogsError'));
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      setSystemLogsNotice(`${t('systemLogsError')}: ${message}`);
+      const res = await togglePause();
+      setData((prev) => (prev ? { ...prev, is_paused: res.is_paused } : prev));
+    } finally {
+      setPauseBusy(false);
     }
   };
 
-  // Detect if we are running inside the Wails desktop app
-  const isDesktop = typeof window !== 'undefined' && wailsWindow().go !== undefined;
+  const handleLanguageSwitch = () => {
+    const next = i18n.language === "zh" ? "en" : "zh";
+    i18n.changeLanguage(next);
+    localStorage.setItem("ai-flight-dashboard_lang", next);
+  };
 
-  if (errorMsg) return (
-    <div className={`min-h-screen bg-[#FFFFFF] text-[#FF0000] p-4 sm:p-6 md:p-10 flex items-center justify-center font-display text-xl sm:text-2xl uppercase border-[12px] border-[#FF0000] m-3 ${isDesktop ? 'wails-drag' : ''}`}>
-      <div className="text-center">
-        <div className="text-4xl md:text-5xl mb-4 text-[#000000] bg-[#FF0000] inline-block px-6 py-2">{t('systemError')}</div>
-        <br/> {errorMsg}
-      </div>
-    </div>
+  // Active time window stats directly from backend periods array
+  const currentPeriod: PeriodStats = useMemo(() => {
+    const periods = data?.periods ?? [];
+    return (
+      periods.find((p) => p.label === selectedWindow) ??
+      periods.find((p) => p.label === "30d") ??
+      periods[0] ?? {
+        label: selectedWindow,
+        input_tokens: 0,
+        cached_tokens: 0,
+        cache_creation_tokens: 0,
+        output_tokens: 0,
+        cost: 0,
+        cache_hit_rate: 0,
+      }
+    );
+  }, [data, selectedWindow]);
+
+  // Dynamic list of CLI sources (supports fixed 4 + any future platforms returned by backend)
+  const availableSources = useMemo(() => {
+    const set = new Set<string>(DEFAULT_SOURCES);
+    for (const s of data?.sources ?? []) {
+      if (s.name) set.add(s.name);
+    }
+    for (const ts of data?.charts?.tool_share ?? []) {
+      if (ts.source) set.add(ts.source);
+    }
+    return Array.from(set);
+  }, [data]);
+
+  // Derived KPI metrics
+  const baseInputTokens = calcBaseInput(
+    currentPeriod.input_tokens,
+    currentPeriod.cached_tokens,
+    currentPeriod.cache_creation_tokens
   );
+  const totalVolumeTokens =
+    (currentPeriod.input_tokens || 0) + (currentPeriod.output_tokens || 0);
+  const blendedCostPerM =
+    totalVolumeTokens > 0 ? (currentPeriod.cost / totalVolumeTokens) * 1_000_000 : 0;
 
-  if (!data) return (
-    <div className={`min-h-screen bg-[#FFFFFF] text-[#000000] p-4 sm:p-6 md:p-10 flex items-center justify-center font-display text-4xl sm:text-5xl md:text-6xl uppercase border-[12px] border-[#000000] m-3 ${isDesktop ? 'wails-drag' : ''}`}>
-      {t('systemInitializing')}
-    </div>
-  );
+  // Estimated USD savings from cache hits (cached tokens billed at ~10% vs full input rate)
+  const estCacheSavingsUsd = useMemo(() => {
+    const cached = currentPeriod.cached_tokens || 0;
+    // Conservative blended $2.70/1M saved differential
+    return (cached / 1_000_000) * 2.7;
+  }, [currentPeriod.cached_tokens]);
 
-  const { periods = [], sources = [] } = data;
-  const hasCostIntelligence = data.charts.daily_costs.length > 0 || data.charts.calendar_heatmap.length > 0 || data.charts.tool_share.length > 0;
+  const isPaused = Boolean(data?.is_paused);
+  const isDesktop = isDesktopRuntime();
 
-  return (
-    <div className={`bg-[#FFFFFF] text-[#000000] min-h-screen px-4 pb-4 sm:px-6 sm:pb-6 md:px-10 md:pb-10 font-sans selection:bg-[#000000] selection:text-[#FFFFFF] ${isDesktop ? 'pt-12' : 'pt-6 md:pt-10'}`}>
-      
-      {/* Dedicated invisible draggable titlebar for macOS native window controls */}
-      {isDesktop && (
-        <div className="h-10 w-full wails-drag fixed top-0 left-0 z-50 bg-[#FFFFFF]"></div>
-      )}
+  // Radial gauge geometry for Cache Hit Rate KPI
+  const gaugeRadius = 18;
+  const gaugeCircumference = 2 * Math.PI * gaugeRadius;
+  const clampedHitRate = Math.min(100, Math.max(0, currentPeriod.cache_hit_rate || 0));
+  const gaugeDashOffset =
+    gaugeCircumference - (clampedHitRate / 100) * gaugeCircumference;
 
-      {isStatsLoading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`fixed left-4 right-4 ${isDesktop ? 'top-14' : 'top-4'} z-[60] flex items-center gap-3 border-[5px] border-[#000000] bg-[#FFFFFF] px-4 py-3 font-display text-sm uppercase text-[#000000] sm:left-auto sm:right-6 sm:w-[260px]`}
-          style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-        >
-          <span className="h-4 w-4 shrink-0 animate-pulse bg-[#000000]" aria-hidden="true"></span>
-          <span>{t('loading')}</span>
-        </div>
-      )}
-
-      {/* Header Section */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16 border-b-[5px] border-[#000000] pb-6">
-        <div>
-          <h1 className="font-display text-5xl sm:text-6xl md:text-7xl leading-[1.0] uppercase tracking-tighter mb-4 break-words">
-            {t('aiFlightDashboard').split(' ').map((word, i) => (
-              <React.Fragment key={i}>{i > 0 && <br/>}{word}</React.Fragment>
-            ))}
-          </h1>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <button
-              onClick={togglePause}
-              style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-              className={`border-[3px] px-3 py-1 font-sans text-xs font-semibold uppercase tracking-wider w-fit min-w-[100px] text-center cursor-pointer ${data?.is_paused ? 'border-[#FF0000] text-[#FF0000] hover:bg-[#FF0000] hover:text-[#FFFFFF]' : 'border-[#008000] text-[#008000] hover:bg-[#008000] hover:text-[#FFFFFF]'}`}
+  if (!data) {
+    return (
+      <div className={`min-h-screen bg-[#F8FAFC] text-[#0F172A] ${isDesktop ? "pt-8" : ""}`}>
+        {isDesktop && (
+          <div
+            className="wails-drag fixed top-0 left-0 z-40 h-8 w-full bg-[#F8FAFC]"
+            aria-hidden="true"
+          />
+        )}
+        <div className="flex min-h-[80vh] items-center justify-center px-4">
+          {loadError ? (
+            <div
+              role="alert"
+              className="w-full max-w-lg rounded-xl border border-rose-200 bg-white p-6 shadow-sm"
             >
-              {data?.is_paused ? t('paused') : t('liveOperations')}
-            </button>
-            {data && (
-              <select 
-                value={selectedDevice} 
-                onChange={e => setSelectedDevice(e.target.value)}
-                className="bg-[#F0F0F0] text-[#000000] border-[3px] border-[#000000] rounded-none px-3 py-2 font-mono text-sm md:text-base outline-none focus:border-[5px] focus:m-[-2px] min-w-[140px]"
-                style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
+              <div className="flex items-center gap-2 text-rose-700">
+                <AlertTriangle className="h-5 w-5" />
+                <h1 className="text-sm font-semibold">{t("app.load_error_title")}</h1>
+              </div>
+              <p className="mt-3 break-all rounded-lg bg-rose-50 px-3 py-2 font-mono-num text-xs text-rose-700">
+                {loadError}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">{t("app.load_error_hint")}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoadError("");
+                  loadTelemetry(false);
+                }}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
               >
-                <option value="all">{t('allDevices')}</option>
-                {data.devices?.map((d: DeviceStats) => (
-                  <option key={d.id} value={d.id}>{(d.display_name || d.id).toUpperCase()}</option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
-        <div className="font-mono text-sm md:text-base text-left md:text-right flex flex-col items-start md:items-end w-full md:w-auto mt-4 md:mt-0">
-          <div>{t('dataRefreshRate')}</div>
-          <div className="flex flex-wrap gap-4 mt-2">
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-              className="text-[#0000FF] uppercase underline decoration-[3px] underline-offset-4 cursor-pointer bg-transparent border-none p-0 hover:text-[#000000] whitespace-nowrap"
+                <RefreshCw className="h-3.5 w-3.5" />
+                {t("app.retry")}
+              </button>
+            </div>
+          ) : (
+            <div
+              role="status"
+              aria-live="polite"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-sm"
             >
-              [ {t('settings')} ]
-            </button>
-            <button
-              onClick={() => i18n.changeLanguage(i18n.language === 'zh' ? 'en' : 'zh')}
-              style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-              className="text-[#0000FF] uppercase underline decoration-[3px] underline-offset-4 cursor-pointer bg-transparent border-none p-0 hover:text-[#000000] whitespace-nowrap"
-            >
-              [ {i18n.language === 'zh' ? 'EN' : '中'} ]
-            </button>
-            <button
-              type="button"
-              onClick={openSystemLogs}
-              style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-              className="text-[#0000FF] uppercase underline decoration-[3px] underline-offset-4 cursor-pointer bg-transparent border-none p-0 hover:text-[#000000] whitespace-nowrap"
-            >
-              [ {t('systemLogs')} ]
-            </button>
-          </div>
-          {systemLogsNotice && (
-            <div role="status" className="mt-3 max-w-full md:max-w-[520px] break-all border-[3px] border-[#000000] bg-[#F0F0F0] p-2 text-xs text-[#000000]">
-              {systemLogsNotice}
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("app.loading")}
             </div>
           )}
         </div>
-      </header>
-      
-      {isSettingsOpen && (
-        <Suspense fallback={<LazyModalFallback />}>
-          <SettingsModal onClose={() => setIsSettingsOpen(false)} />
-        </Suspense>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`min-h-screen bg-[#F8FAFC] text-[#0F172A] ${isDesktop ? "pt-8" : ""}`}>
+      {/* macOS hidden-title-bar drag strip. Interactive controls opt out below. */}
+      {isDesktop && (
+        <div
+          className="wails-drag fixed top-0 left-0 z-40 h-8 w-full bg-[#F8FAFC]"
+          aria-hidden="true"
+        />
       )}
 
-      {/* Source Filter Tabs + PeriodCost Stats */}
-      <section className="mb-12 md:mb-20">
-        <div className="flex flex-wrap items-center gap-0 mb-6">
-          {[
-            { label: t('total'), value: '' },
-            { label: 'CLAUDE', value: 'Claude Code' },
-            { label: 'GEMINI', value: 'Gemini CLI' },
-            { label: 'CODEX', value: 'Codex' },
-            { label: 'ANTIGRAVITY', value: 'Antigravity' },
-          ].map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setSelectedSource(tab.value)}
-              className={`px-4 py-2 font-display text-sm uppercase tracking-wider border-[3px] border-[#000000] cursor-pointer transition-none -ml-[3px] first:ml-0 ${
-                selectedSource === tab.value
-                  ? 'bg-[#000000] text-[#FFFFFF]'
-                  : 'bg-[#FFFFFF] text-[#000000] hover:bg-[#F0F0F0]'
-              }`}
-              style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
-        {periods.map((p: PeriodStats) => {
-          const isElevated = p.label === 'ALL';
-          const cardClass = `bg-[#FFFFFF] border-[#000000] rounded-none p-4 md:p-6 flex flex-col justify-between shadow-none ${isElevated ? 'border-[5px]' : 'border-[3px]'}`;
-          return (
-            <div key={p.label} className={cardClass}>
-              <div className="mb-4">
-                <h3 className="font-display text-xl xl:text-2xl leading-[1.1] uppercase mb-2">{p.label}</h3>
-                <div className="flex flex-col gap-1 font-mono text-xs xl:text-sm">
-                  <span>{t('labelIn')}: {fmt(p.input_tokens)}</span>
-                  <span>{t('cacheRead')}: {fmt(p.cached_tokens)}</span>
-                  <span>{t('cacheWrite')}: {fmt(p.cache_creation_tokens)}</span>
-                  <span>{t('labelOut')}: {fmt(p.output_tokens)}</span>
-                  <span>{t('cacheHitRate')}: {fmtPercent(p.cache_hit_rate)}</span>
-                </div>
+      {/* =====================================================================
+          1. TOP PRECISION COMMAND BAR (Sticky 56px)
+         ===================================================================== */}
+      <header className={`wails-drag sticky z-30 border-b border-slate-200/90 bg-white/90 backdrop-blur-md ${isDesktop ? "top-8" : "top-0"}`}>
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+          {/* Left: Brand + Local Privacy + Live Scanner Status */}
+          <div className={`flex items-center gap-3 ${isDesktop ? "pl-14" : ""}`}>
+            <div className="flex items-center gap-2.5">
+              {/* Custom Geometric Pulse Logo */}
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white shadow-xs">
+                <svg viewBox="0 0 24 24" fill="none" className="h-4.5 w-4.5">
+                  <path
+                    d="M3 12H7L9.5 5.5L14.5 18.5L17 12H21"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </div>
-              <div className="font-mono text-2xl md:text-3xl leading-none mt-4 border-t-[3px] border-[#000000] pt-4 whitespace-nowrap overflow-hidden text-ellipsis">
-                {fmtCost(p.cost)}
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold tracking-tight text-slate-900">
+                    {t("app.title")}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
+                    <ShieldCheck className="h-2.5 w-2.5 text-emerald-600" />
+                    {t("app.badge_local")}
+                  </span>
+                </div>
+                <p className="hidden text-[11px] text-slate-400 xl:block">
+                  {t("app.subtitle")}
+                </p>
               </div>
             </div>
-          )
-        })}
+
+            <div className="hidden h-5 w-px bg-slate-200 sm:block" />
+
+            {/* Live Scanner Status & Pause/Resume Control */}
+            <button
+              type="button"
+              disabled={pauseBusy}
+              onClick={handleTogglePause}
+              title={isPaused ? t("app.resume_btn") : t("app.pause_btn")}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wider uppercase transition-all ${
+                isPaused
+                  ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                  : "border-emerald-200 bg-emerald-50/80 text-emerald-700 hover:bg-emerald-100/80"
+              }`}
+            >
+              <span className="relative flex h-2 w-2">
+                {!isPaused && (
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                )}
+                <span
+                  className={`relative inline-flex h-2 w-2 rounded-full ${
+                    isPaused ? "bg-amber-500" : "bg-emerald-500"
+                  }`}
+                />
+              </span>
+              <span>{isPaused ? t("app.paused") : t("app.scanning")}</span>
+              {isPaused ? (
+                <Play className="ml-0.5 h-2.5 w-2.5 fill-current" />
+              ) : (
+                <Pause className="ml-0.5 h-2.5 w-2.5" />
+              )}
+            </button>
+          </div>
+
+          {/* Right: Drawers, Currency & Language Switchers */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* LAN Radar Trigger */}
+            <button
+              type="button"
+              onClick={() => setActiveDrawer("lan")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              <Radio className="h-3.5 w-3.5 text-emerald-600" />
+              <span>{t("drawers.lan_btn")}</span>
+              {(data?.devices?.length ?? 0) > 1 && (
+                <span className="font-mono-num rounded bg-slate-100 px-1.5 py-0.2 text-[10px] font-semibold text-slate-700">
+                  {data?.devices?.length}
+                </span>
+              )}
+            </button>
+
+            {/* Devices Manager Trigger */}
+            <button
+              type="button"
+              onClick={() => setActiveDrawer("devices")}
+              aria-label={t("drawers.devices_btn")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              <Laptop className="h-3.5 w-3.5 text-slate-500" />
+              <span className="hidden md:inline">{t("drawers.devices_btn")}</span>
+            </button>
+
+            {/* Model Pricing Trigger */}
+            <button
+              type="button"
+              onClick={() => setActiveDrawer("pricing")}
+              aria-label={t("drawers.pricing_btn")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              <DollarSign className="h-3.5 w-3.5 text-slate-500" />
+              <span className="hidden md:inline">{t("drawers.pricing_btn")}</span>
+            </button>
+
+            {/* Scanner Config Trigger */}
+            <button
+              type="button"
+              onClick={() => setActiveDrawer("config")}
+              aria-label={t("drawers.config_btn")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              <Sliders className="h-3.5 w-3.5 text-slate-500" />
+              <span className="hidden md:inline">{t("drawers.config_btn")}</span>
+            </button>
+
+            <div className="h-4 w-px bg-slate-200" />
+
+            {/* Currency Switcher */}
+            <select
+              aria-label="Currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
+              className="font-mono-num cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 focus:border-slate-900 focus:outline-none"
+            >
+              {(Object.keys(EXCHANGE_RATES) as CurrencyCode[]).map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+
+            {/* Language Switcher (zh / en) */}
+            <button
+              type="button"
+              onClick={handleLanguageSwitch}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100"
+            >
+              <Globe className="h-3.5 w-3.5 text-slate-500" />
+              <span>{i18n.language === "zh" ? "EN" : "中文"}</span>
+            </button>
+          </div>
         </div>
-      </section>
+      </header>
 
-      {hasCostIntelligence && (
-        <CostIntelligenceSection charts={data.charts} t={t} />
-      )}
+      {/* =====================================================================
+          2. MAIN TELEMETRY WORKSPACE CONTAINER
+         ===================================================================== */}
+      <main className="mx-auto max-w-[1440px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        {loadError && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800"
+          >
+            <span className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {t("app.refresh_error")}: {loadError}
+            </span>
+            <button
+              type="button"
+              onClick={() => loadTelemetry(false)}
+              className="rounded-md border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-800 hover:bg-amber-100"
+            >
+              {t("app.retry")}
+            </button>
+          </div>
+        )}
 
-      {/* LAN Radar Component */}
-      <Suspense fallback={<LazyBlockFallback />}>
-        <Radar />
-      </Suspense>
+        {/* Global Filter & Time Window Control Strip */}
+        <div className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] lg:flex-row lg:items-center">
+          {/* Left: Device Selector + CLI Source Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Device Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <Laptop className="h-3.5 w-3.5 text-slate-400" />
+              <select
+                aria-label={t("filters.device_label")}
+                value={selectedDevice}
+                onChange={(e) => setSelectedDevice(e.target.value)}
+                className="cursor-pointer rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-xs font-semibold text-slate-800 transition-colors hover:border-slate-300 focus:border-slate-900 focus:outline-none"
+              >
+                <option value="all">{t("filters.all_devices")}</option>
+                {(data?.devices ?? []).map((dev) => (
+                  <option key={dev.id} value={dev.id}>
+                    {dev.display_name || dev.id}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-      {/* Projects Section */}
-      {data.projects && data.projects.length > 0 && (
-        <section className="mb-12 md:mb-20">
-          <article className="bg-[#FFFFFF] border-[5px] border-[#000000] rounded-none shadow-none flex flex-col">
-            <div className="p-4 sm:p-6 border-b-[5px] border-[#000000] flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-[#000000] text-[#FFFFFF]">
-              <div className="break-words w-full">
-                <h2 className="font-display text-3xl sm:text-4xl md:text-5xl uppercase leading-[1.05] break-words">
-                  {t('projects') || 'PROJECT STATS'}
-                </h2>
-              </div>
+            <div className="hidden h-4 w-px bg-slate-200 sm:block" />
+
+            {/* Source Segmented Pills */}
+            <div className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
-                aria-label={projectsCollapsed ? t('expandProjects') : t('collapseProjects')}
-                onClick={() => setProjectsCollapsed((collapsed) => !collapsed)}
-                style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-                className="shrink-0 border-[3px] border-[#FFFFFF] bg-[#000000] px-3 py-2 font-display text-xs sm:text-sm uppercase text-[#FFFFFF] hover:bg-[#FFFFFF] hover:text-[#000000] cursor-pointer"
+                onClick={() => setSelectedSource("")}
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
+                  selectedSource === ""
+                    ? "bg-slate-900 font-semibold text-white shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
               >
-                {projectsCollapsed ? t('expand') : t('collapse')}
+                {t("filters.all_sources")}
               </button>
-            </div>
-            {!projectsCollapsed && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-mono text-xs sm:text-sm min-w-[600px]">
-                  <thead>
-                    <tr className="border-b-[5px] border-[#000000] bg-[#F0F0F0]">
-                      <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase">{t('project')}</th>
-                      <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase">{t('events')}</th>
-                      <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase">{t('tokens')}</th>
-                      <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase text-right">{t('subtotal')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.projects.map((p) => (
-                      <tr key={p.project} className="border-b-[3px] border-[#000000] last:border-b-0 hover:bg-[#000000] hover:text-[#FFFFFF] transition-none group">
-                        <td className="px-3 py-3 sm:px-4 sm:py-4 font-bold group-hover:text-[#FFFFFF] truncate max-w-[300px]" title={p.project}>{p.project}</td>
-                        <td className="px-3 py-3 sm:px-4 sm:py-4 group-hover:text-[#FFFFFF]">{p.events}</td>
-                        <td className="px-3 py-3 sm:px-4 sm:py-4 group-hover:text-[#FFFFFF]">
-                          {t('labelIn')}: {fmt(p.input_tokens)} / {t('cacheRead')}: {fmt(p.cached_tokens)} / {t('cacheWrite')}: {fmt(p.cache_creation_tokens)} / {t('labelOut')}: {fmt(p.output_tokens)} / {t('cacheHitRate')}: {fmtPercent(p.cache_hit_rate)}
-                        </td>
-                        <td className="px-3 py-3 sm:px-4 sm:py-4 text-right font-bold group-hover:text-[#FFFFFF]">{fmtCost(p.total_cost)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </article>
-        </section>
-      )}
 
-      {/* Source Stats Grid */}
-      <section className="grid grid-cols-1 2xl:grid-cols-2 gap-6 lg:gap-10">
-        {sources.map((src: SourceStats) => {
-           const baseInput = Math.max(0, num(src.total_input) - num(src.total_cached) - num(src.total_cache_creation));
-           const totalTokens = baseInput + num(src.total_cached) + num(src.total_cache_creation) + num(src.total_output);
-           
-           const inPct = totalTokens > 0 ? (baseInput / totalTokens) * 100 : 0;
-           const cachedPct = totalTokens > 0 ? (num(src.total_cached) / totalTokens) * 100 : 0;
-           const cacheCreationPct = totalTokens > 0 ? (num(src.total_cache_creation) / totalTokens) * 100 : 0;
-           const outPct = totalTokens > 0 ? (num(src.total_output) / totalTokens) * 100 : 0;
-
-           const formatPct = (pct: number) => {
-             if (pct > 0 && pct < 1) return '<1%';
-             return pct.toFixed(0) + '%';
-           };
-
-           const sortedModels = [...(src.models || [])].sort((a: SourceModelStats, b: SourceModelStats) => num(b.total_cost) - num(a.total_cost));
-           const modelsCollapsed = Boolean(collapsedModelSources[src.name]);
-
-           return (
-            <article key={src.name} className="bg-[#FFFFFF] border-[5px] border-[#000000] rounded-none shadow-none flex flex-col">
-              <div className="p-4 sm:p-6 border-b-[5px] border-[#000000] flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-[#000000] text-[#FFFFFF]">
-                <div className="break-words w-full">
-                  <h2 className="font-display text-3xl sm:text-4xl md:text-5xl uppercase leading-[1.05] break-words">
-                    {src.name}
-                  </h2>
-                </div>
-                <div className="text-left md:text-right shrink-0">
-                  <span className="font-display text-xs sm:text-sm uppercase mb-1 block">{t('totalSpend')}</span>
-                  <div className="font-mono text-3xl sm:text-4xl md:text-5xl leading-none">{fmtCost(src.total_cost)}</div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 border-b-[5px] border-[#000000]">
-                {/* Token Distribution Grid */}
-                <div className="p-4 sm:p-6 border-b-[5px] lg:border-b-0 lg:border-r-[5px] border-[#000000] grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6">
-                  <div className="border-l-[5px] border-[#000000] pl-3">
-                    <span className="font-display text-xs sm:text-sm uppercase block mb-1">{t('baseInput')}</span>
-                    <div className="font-mono text-xl sm:text-2xl">{fmt(baseInput)}</div>
-                  </div>
-                  <div className="border-l-[5px] border-[#000000] pl-3">
-                    <span className="font-display text-xs sm:text-sm uppercase block mb-1">{t('cacheRead')}</span>
-                    <div className="font-mono text-xl sm:text-2xl">{fmt(src.total_cached)}</div>
-                  </div>
-                  <div className="border-l-[5px] border-[#000000] pl-3">
-                    <span className="font-display text-xs sm:text-sm uppercase block mb-1">{t('cacheWrite')}</span>
-                    <div className="font-mono text-xl sm:text-2xl">{fmt(src.total_cache_creation)}</div>
-                  </div>
-                  <div className="border-l-[5px] border-[#000000] pl-3">
-                    <span className="font-display text-xs sm:text-sm uppercase block mb-1">{t('outputTokens')}</span>
-                    <div className="font-mono text-xl sm:text-2xl">{fmt(src.total_output)}</div>
-                  </div>
-                  <div className="border-l-[5px] border-[#000000] pl-3">
-                    <span className="font-display text-xs sm:text-sm uppercase block mb-1">{t('totalTokens')}</span>
-                    <div className="font-mono text-xl sm:text-2xl">{fmt(totalTokens)}</div>
-                  </div>
-                  <div className="border-l-[5px] border-[#000000] pl-3">
-                    <span className="font-display text-xs sm:text-sm uppercase block mb-1">{t('cacheHitRate')}</span>
-                    <div className="font-mono text-xl sm:text-2xl">{fmtPercent(src.cache_hit_rate)}</div>
-                  </div>
-                </div>
-
-                {/* Brutalist Progress Bar Area */}
-                <div className="p-4 sm:p-6 flex flex-col justify-center">
-                  <div className="w-full h-8 sm:h-10 border-[3px] border-[#000000] flex mb-4">
-                    <div style={{width: `${inPct}%`}} className="bg-[#000000] h-full border-r-[3px] border-[#000000]"></div>
-                    <div style={{width: `${cachedPct}%`}} className="bg-[#CCCCCC] h-full border-r-[3px] border-[#000000]"></div>
-                    <div style={{width: `${cacheCreationPct}%`}} className="bg-[#888888] h-full border-r-[3px] border-[#000000]"></div>
-                    <div style={{width: `${outPct}%`}} className="bg-[#FFFFFF] h-full"></div>
-                  </div>
-                  <div className="flex flex-col gap-2 font-mono text-xs sm:text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="w-4 h-4 bg-[#000000] border-[3px] border-[#000000] shrink-0"></span> {t('labelIn')} ({formatPct(inPct)})
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-4 h-4 bg-[#CCCCCC] border-[3px] border-[#000000] shrink-0"></span> {t('cacheRead')} ({formatPct(cachedPct)})
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-4 h-4 bg-[#888888] border-[3px] border-[#000000] shrink-0"></span> {t('cacheWrite')} ({formatPct(cacheCreationPct)})
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-4 h-4 bg-[#FFFFFF] border-[3px] border-[#000000] shrink-0"></span> {t('labelOut')} ({formatPct(outPct)})
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Model Table */}
-              <div>
-                <div className="flex items-center justify-between gap-4 bg-[#F0F0F0] px-3 py-3 sm:px-4 sm:py-4">
-                  <h3 className="font-display text-xs sm:text-sm uppercase">
-                    {t('models')} ({sortedModels.length})
-                  </h3>
+              {availableSources.map((src) => {
+                const active = selectedSource === src;
+                return (
                   <button
+                    key={src}
                     type="button"
-                    aria-label={modelsCollapsed ? t('expandModels') : t('collapseModels')}
-                    onClick={() => toggleModelsCollapsed(src.name)}
-                    style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-                    className="shrink-0 border-[3px] border-[#000000] bg-[#FFFFFF] px-3 py-2 font-display text-xs sm:text-sm uppercase text-[#000000] hover:bg-[#000000] hover:text-[#FFFFFF] cursor-pointer"
+                    onClick={() => setSelectedSource(active ? "" : src)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-all ${
+                      active
+                        ? "border-slate-900 bg-slate-900 font-semibold text-white shadow-2xs"
+                        : "border-transparent bg-slate-50/80 text-slate-700 hover:border-slate-200 hover:bg-white"
+                    }`}
                   >
-                    {modelsCollapsed ? t('expand') : t('collapse')}
+                    <SourceIcon source={src} className="h-3.5 w-3.5" />
+                    <span>{src}</span>
                   </button>
-                </div>
-                {!modelsCollapsed && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left font-mono text-xs sm:text-sm min-w-[760px]">
-                      <thead>
-                        <tr className="border-y-[5px] border-[#000000] bg-[#F0F0F0]">
-                          <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase">{t('modelIdentifier')}</th>
-                          <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase">{t('rates1M')}</th>
-                          <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase">{t('tokens')}</th>
-                          <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase">{t('events')}</th>
-                          <th className="px-3 py-3 sm:px-4 sm:py-4 font-display text-xs sm:text-sm uppercase text-right">{t('subtotal')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedModels.map((m: SourceModelStats) => (
-                          <tr key={m.model} className="border-b-[3px] border-[#000000] last:border-b-0 hover:bg-[#000000] hover:text-[#FFFFFF] transition-none group">
-                            <td className="px-3 py-3 sm:px-4 sm:py-4 font-bold group-hover:text-[#FFFFFF] max-w-[200px] truncate" title={m.model}>{m.model}</td>
-                            <td className="px-3 py-3 sm:px-4 sm:py-4 group-hover:text-[#FFFFFF]">
-                              {t('labelIn')}: {fmtCost(m.input_price_per_m)} / {t('cacheRead')}: {fmtCost(m.cached_price_per_m)} / {t('cacheWrite')}: {fmtCost(m.cache_creation_price_per_m)} / {t('labelOut')}: {fmtCost(m.output_price_per_m)}
-                            </td>
-                            <td className="px-3 py-3 sm:px-4 sm:py-4 group-hover:text-[#FFFFFF]">
-                              {t('labelIn')}: {fmt(m.input_tokens)} / {t('cacheRead')}: {fmt(m.cached_tokens)} / {t('cacheWrite')}: {fmt(m.cache_creation_tokens)} / {t('labelOut')}: {fmt(m.output_tokens)} / {t('cacheHitRate')}: {fmtPercent(m.cache_hit_rate)}
-                            </td>
-                            <td className="px-3 py-3 sm:px-4 sm:py-4 group-hover:text-[#FFFFFF]">{m.events}</td>
-                            <td className="px-3 py-3 sm:px-4 sm:py-4 text-right font-bold group-hover:text-[#FFFFFF]">{fmtCost(m.total_cost)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right: 8 Fixed Time Window Tabs + Two-Stage Hydration Indicator */}
+          <div className="flex flex-wrap items-center justify-between gap-2 lg:justify-end">
+            {/* Two-Stage Load Status Pill */}
+            <span
+              className={`hidden items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase xl:inline-flex ${
+                isHydratingDetails
+                  ? "bg-blue-50 text-blue-600"
+                  : "bg-slate-100 text-slate-400"
+              }`}
+            >
+              <Activity className="h-2.5 w-2.5" />
+              {isHydratingDetails ? t("app.stage_hydrating") : t("app.stage_synced")}
+            </span>
+
+            {/* Fixed 8 Time Windows: 1h, 24h, 7d, 30d, 3mo, 6mo, 1y, ALL */}
+            <div
+              role="tablist"
+              aria-label={t("filters.window_label")}
+              className="inline-flex rounded-lg border border-slate-200 bg-slate-100/80 p-0.5"
+            >
+              {TIME_WINDOWS.map((win) => {
+                const isActive = selectedWindow === win;
+                return (
+                  <button
+                    key={win}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setSelectedWindow(win)}
+                    className={`font-mono-num rounded-md px-2.5 py-1 text-xs font-semibold transition-all ${
+                      isActive
+                        ? "bg-white text-slate-900 shadow-xs"
+                        : "text-slate-500 hover:text-slate-900"
+                    }`}
+                  >
+                    {win}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* ===================================================================
+            3. FOUR HERO KPI CARDS
+           =================================================================== */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/* KPI 1: Estimated Cost */}
+          <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                ESTIMATED COST · {selectedWindow}
+              </span>
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                {currency}
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between gap-2">
+              <div className="font-mono-num text-3xl font-bold tracking-tight text-slate-900">
+                {formatCost(currentPeriod.cost, currency)}
               </div>
-            </article>
-           );
-        })}
-      </section>
+              <span className="font-mono-num text-xs font-medium text-slate-400">
+                ~{formatCost(blendedCostPerM, currency)} / 1M
+              </span>
+            </div>
+            <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
+              <span>{t("kpi.total_cost")}</span>
+              <span className="text-[11px] text-slate-400">{t("kpi.total_cost_sub")}</span>
+            </div>
+          </div>
+
+          {/* KPI 2: Total Token Volume */}
+          <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                TOTAL TOKENS · {selectedWindow}
+              </span>
+              <span className="font-mono-num rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                IN + OUT
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between gap-2">
+              <div
+                className="font-mono-num text-3xl font-bold tracking-tight text-slate-900"
+                title={formatExactNumber(totalVolumeTokens)}
+              >
+                {formatCompactNumber(totalVolumeTokens)}
+              </div>
+              <div className="font-mono-num text-[11px] text-slate-500">
+                IN {formatCompactNumber(currentPeriod.input_tokens)} · OUT{" "}
+                {formatCompactNumber(currentPeriod.output_tokens)}
+              </div>
+            </div>
+            <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
+              <span>{t("kpi.total_tokens")}</span>
+              <span className="text-[11px] text-slate-400">{t("kpi.total_tokens_sub")}</span>
+            </div>
+          </div>
+
+          {/* KPI 3: Cache Hit Rate + Radial Gauge */}
+          <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                  CACHE HIT RATE
+                </span>
+                <div className="font-mono-num mt-2 text-3xl font-bold tracking-tight text-emerald-600">
+                  {formatPercent(currentPeriod.cache_hit_rate)}
+                </div>
+              </div>
+
+              {/* Handcrafted Radial SVG Ring */}
+              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+                <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
+                  <circle
+                    cx="22"
+                    cy="22"
+                    r={gaugeRadius}
+                    fill="none"
+                    stroke="#E2E8F0"
+                    strokeWidth="4"
+                  />
+                  <circle
+                    cx="22"
+                    cy="22"
+                    r={gaugeRadius}
+                    fill="none"
+                    stroke="#10B981"
+                    strokeWidth="4"
+                    strokeDasharray={gaugeCircumference}
+                    strokeDashoffset={gaugeDashOffset}
+                    strokeLinecap="round"
+                    className="transition-all duration-500"
+                  />
+                </svg>
+                <span className="font-mono-num absolute text-[10px] font-bold text-slate-700">
+                  {Math.round(clampedHitRate)}%
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-xs">
+              <span className="text-slate-500">{t("kpi.cache_hit_rate")}</span>
+              <span className="font-mono-num font-semibold text-emerald-700">
+                {t("kpi.cache_savings")} {formatCost(estCacheSavingsUsd, currency)}
+              </span>
+            </div>
+          </div>
+
+          {/* KPI 4: Base Input (Uncached New Input) */}
+          <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                BASE INPUT
+              </span>
+              <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                BILLABLE NEW
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between gap-2">
+              <div
+                className="font-mono-num text-3xl font-bold tracking-tight text-slate-900"
+                title={formatExactNumber(baseInputTokens)}
+              >
+                {formatCompactNumber(baseInputTokens)}
+              </div>
+              <span className="font-mono-num text-xs text-slate-400">
+                {currentPeriod.input_tokens > 0
+                  ? `${((baseInputTokens / currentPeriod.input_tokens) * 100).toFixed(1)}% of IN`
+                  : "0%"}
+              </span>
+            </div>
+            <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
+              <span>{t("kpi.base_input")}</span>
+              <span className="text-[11px] text-slate-400">{t("kpi.base_input_sub")}</span>
+            </div>
+          </div>
+        </section>
+
+        {/* ===================================================================
+            4. FOUR-CATEGORY TOKEN TAXONOMY STRIP
+           =================================================================== */}
+        <TokenTaxonomyStrip period={currentPeriod} />
+
+        {/* ===================================================================
+            5. VISUAL ANALYTICS CHARTS (30D DAILY COST + CLI SOURCE SHARE)
+           =================================================================== */}
+        <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="lg:col-span-7">
+            <DailyCostChart
+              data={data?.charts?.daily_costs ?? []}
+              currency={currency}
+            />
+          </div>
+          <div className="lg:col-span-5">
+            <SourceShareChart
+              toolShare={data?.charts?.tool_share ?? []}
+              sources={data?.sources ?? []}
+              activeSource={selectedSource}
+              onSelectSource={setSelectedSource}
+              currency={currency}
+            />
+          </div>
+        </section>
+
+        {/* ===================================================================
+            6. GITHUB-STYLE ACTIVITY HEATMAP MATRIX
+           =================================================================== */}
+        <ActivityHeatmap
+          data={data?.charts?.calendar_heatmap ?? []}
+          currency={currency}
+        />
+
+        {/* ===================================================================
+            7. TWO-STAGE PROGRESSIVE ATTRIBUTION TABLES (MODELS & PROJECTS)
+           =================================================================== */}
+        <AttributionTables
+          sources={data?.sources ?? []}
+          projects={data?.projects}
+          isHydratingDetails={isHydratingDetails}
+          currency={currency}
+        />
+      </main>
+
+      {/* =====================================================================
+          8. SLIDE-OVER DRAWERS (LAN RADAR, DEVICES, PRICING, SYSTEM CONFIG)
+         ===================================================================== */}
+      <SlideOverDrawers
+        activeDrawer={activeDrawer}
+        onClose={() => setActiveDrawer(null)}
+        currency={currency}
+        onDataMutated={() => loadTelemetry(true)}
+      />
     </div>
   );
 }
+
+export default App;
