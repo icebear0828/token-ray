@@ -55,6 +55,19 @@ export function App() {
   const [isHydratingDetails, setIsHydratingDetails] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
   const [pauseBusy, setPauseBusy] = useState<boolean>(false);
+  const [updateBanner, setUpdateBanner] = useState<{ version: string } | null>(null);
+  const [dismissedUpdate, setDismissedUpdate] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetch("/api/system/update/check")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { has_update?: boolean; latest_version?: string } | null) => {
+        if (data && data.has_update && data.latest_version) {
+          setUpdateBanner({ version: data.latest_version });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const requestSeqRef = useRef<number>(0);
 
@@ -419,6 +432,40 @@ export function App() {
           </div>
         </div>
       </header>
+
+      {updateBanner && !dismissedUpdate && (
+        <aside
+          aria-label="update-notification"
+          className="mx-auto mt-3 max-w-[1440px] px-4 sm:px-6 lg:px-8"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 shadow-sm">
+            <div className="flex items-center gap-2 font-medium">
+              <span>🚀</span>
+              <span>{t("newVersionAvailable")}:</span>
+              <span className="font-mono-num rounded bg-amber-200/80 px-2 py-0.5 font-bold text-amber-950">
+                {updateBanner.version}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveDrawer("config")}
+                className="font-semibold underline hover:text-amber-950"
+              >
+                {t("viewDetails")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissedUpdate(true)}
+                className="font-bold text-slate-500 hover:text-slate-800"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
 
       {/* =====================================================================
           2. MAIN TELEMETRY WORKSPACE CONTAINER
