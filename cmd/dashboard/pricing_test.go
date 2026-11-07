@@ -158,6 +158,12 @@ func TestEmbeddedPricingMatchesOfficialRates(t *testing.T) {
 			CacheCreationPricePerM: 1.25,
 			OutputPricePerM:        5.00,
 		},
+		"claude-haiku-4-5": {
+			InputPricePerM:         1.00,
+			CachedPricePerM:        0.10,
+			CacheCreationPricePerM: 1.25,
+			OutputPricePerM:        5.00,
+		},
 		"deepseek-v4.1-flash": {
 			InputPricePerM:  0.14,
 			CachedPricePerM: 0.014,

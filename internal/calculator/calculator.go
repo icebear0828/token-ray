@@ -15,20 +15,22 @@ var dateSuffixRe = regexp.MustCompile(`-\d{8}$`)
 // NormalizeModelName strips known variant suffixes from a model name so that
 // unknown variants fall back to their base model's pricing.
 //
-// Rules applied in order:
-//  1. Strip trailing date suffix  (e.g. -20250929)
-//  2. Strip trailing -thinking suffix
-//  3. Strip trailing -preview suffix
+// Rules applied:
+//  1. Strip trailing date suffix (e.g. -20250929)
+//  2. Repeatedly strip known variant suffixes (-thinking, -preview) until stable
 //
 // The function returns the stripped name. If no stripping applies the input is
 // returned unchanged.
 func NormalizeModelName(model string) string {
-	// Strip date suffix first (may be combined with -thinking, e.g. -thinking-20251001)
 	model = dateSuffixRe.ReplaceAllString(model, "")
-	// Strip -thinking
-	model = strings.TrimSuffix(model, "-thinking")
-	// Strip -preview
-	model = strings.TrimSuffix(model, "-preview")
+	for {
+		prev := model
+		model = strings.TrimSuffix(model, "-thinking")
+		model = strings.TrimSuffix(model, "-preview")
+		if model == prev {
+			break
+		}
+	}
 	return model
 }
 
@@ -102,13 +104,22 @@ func (c *Calculator) lookupPrice(model string) (ModelPrice, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	// 1. Exact match
 	if p, ok := c.prices.Models[model]; ok {
 		return p, true
 	}
 
-	// Try progressively normalized forms until a match is found.
-	normalized := NormalizeModelName(model)
-	if normalized != model {
+	// 2. Date-stripped fallback (e.g. custom-preview-only-20260501 -> custom-preview-only)
+	dateStripped := dateSuffixRe.ReplaceAllString(model, "")
+	if dateStripped != model {
+		if p, ok := c.prices.Models[dateStripped]; ok {
+			return p, true
+		}
+	}
+
+	// 3. Progressive/fully normalized fallback
+	normalized := NormalizeModelName(dateStripped)
+	if normalized != dateStripped {
 		if p, ok := c.prices.Models[normalized]; ok {
 			return p, true
 		}

@@ -97,6 +97,9 @@ func TestNormalizeModelName(t *testing.T) {
 		{"claude-opus-4-5-20260101", "claude-opus-4-5"},
 		{"unknown-model-20991231", "unknown-model"},
 		{"no-suffix", "no-suffix"},
+		{"gemini-2.0-flash-thinking-preview", "gemini-2.0-flash"},
+		{"gemini-2.0-flash-preview-thinking", "gemini-2.0-flash"},
+		{"claude-sonnet-4-5-preview-thinking-20251101", "claude-sonnet-4-5"},
 	}
 	for _, tc := range cases {
 		got := calculator.NormalizeModelName(tc.input)
@@ -122,6 +125,12 @@ func TestCalculateCostFallbackNormalization(t *testing.T) {
 				"cached_price_per_m": 0.01,
 				"cache_creation_price_per_m": 0.00,
 				"output_price_per_m": 0.40
+			},
+			"custom-preview-only": {
+				"input_price_per_m": 1.00,
+				"cached_price_per_m": 0.10,
+				"cache_creation_price_per_m": 0.00,
+				"output_price_per_m": 2.00
 			}
 		}
 	}`
@@ -184,6 +193,33 @@ func TestCalculateCostFallbackNormalization(t *testing.T) {
 		}
 		if cost != 0.10 {
 			t.Errorf("preview-suffix fallback cost = %f, want 0.10", cost)
+		}
+	})
+
+	t.Run("progressive fallback to preview entry when date stripped", func(t *testing.T) {
+		cost, err := calc.CalculateCost("custom-preview-only-20260501", 1_000_000, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 1.00 {
+			t.Errorf("progressive fallback cost = %f, want 1.00", cost)
+		}
+	})
+
+	t.Run("GetModelPrice fallback", func(t *testing.T) {
+		price, ok := calc.GetModelPrice("claude-sonnet-4-5-20250929")
+		if !ok || price.InputPricePerM != 3.00 {
+			t.Errorf("GetModelPrice fallback failed: ok=%v, price=%+v", ok, price)
+		}
+	})
+
+	t.Run("CalculateCostNoCaching fallback", func(t *testing.T) {
+		cost, err := calc.CalculateCostNoCaching("claude-sonnet-4-5-thinking-20251101", 1_000_000, 500_000, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 3.00 {
+			t.Errorf("CalculateCostNoCaching fallback cost = %f, want 3.00", cost)
 		}
 	})
 

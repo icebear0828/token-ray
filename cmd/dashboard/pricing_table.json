@@ -156,6 +156,12 @@
       "cache_creation_price_per_m": 1.25,
       "output_price_per_m": 5.00
     },
+    "claude-haiku-4-5": {
+      "input_price_per_m": 1.00,
+      "cached_price_per_m": 0.10,
+      "cache_creation_price_per_m": 1.25,
+      "output_price_per_m": 5.00
+    },
     "deepseek-v4.1-flash": {
       "input_price_per_m": 0.14,
       "cached_price_per_m": 0.014,
