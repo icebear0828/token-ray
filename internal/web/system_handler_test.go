@@ -6,6 +6,7 @@ import (
 	"ai-flight-dashboard/internal/testutil"
 	"ai-flight-dashboard/internal/web"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,6 +28,8 @@ func TestStaticPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200 for /, got %d", resp.StatusCode)
 	}

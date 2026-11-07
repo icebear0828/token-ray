@@ -48,6 +48,29 @@ import { SourceBadge } from "./SourceBadge";
 
 export type DrawerType = "lan" | "devices" | "pricing" | "config" | null;
 
+interface VersionInfo {
+  version: string;
+  goos: string;
+  goarch: string;
+}
+
+interface UpdateStatus {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  release_notes?: string;
+  published_at?: string;
+  download_url?: string;
+  asset_name?: string;
+  error?: string;
+}
+
+interface UpdateApplyResponse {
+  success: boolean;
+  message: string;
+  version?: string;
+}
+
 interface SlideOverDrawersProps {
   activeDrawer: DrawerType;
   onClose: () => void;
@@ -113,6 +136,14 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
   const [configSaving, setConfigSaving] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
 
+  // Update & Version state
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState<boolean>(false);
+  const [applyingUpdate, setApplyingUpdate] = useState<boolean>(false);
+  const [updateResult, setUpdateResult] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
   // LAN 3-second polling when drawer is open
   useEffect(() => {
     if (activeDrawer !== "lan") return;
@@ -161,6 +192,12 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
         })
         .catch(() => undefined);
     } else if (activeDrawer === "config") {
+      fetch("/api/system/version")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((v: VersionInfo | null) => {
+          if (!cancelled && v) setVersionInfo(v);
+        })
+        .catch(() => undefined);
       Promise.all([fetchConfig(), fetchSystemLogsPath().catch(() => ({ path: "" }))])
         .then(([cfg, logObj]) => {
           if (cancelled) return;
@@ -350,6 +387,47 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
     }
   };
 
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    setUpdateResult(null);
+    setUpdateError(null);
+    try {
+      const res = await fetch("/api/system/update/check");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as UpdateStatus;
+      setUpdateStatus(data);
+      if (data.error) setUpdateError(data.error);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setUpdateError(msg);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    setApplyingUpdate(true);
+    setUpdateResult(null);
+    setUpdateError(null);
+    try {
+      const res = await fetch("/api/system/update/apply", {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => null)) as UpdateApplyResponse | null;
+      if (!res.ok && !data) throw new Error(`HTTP ${res.status}`);
+      if (data?.success) {
+        setUpdateResult(data.message || t("updateSuccess"));
+      } else {
+        setUpdateError(data?.message || t("updateFailed"));
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setUpdateError(msg);
+    } finally {
+      setApplyingUpdate(false);
+    }
+  };
+
   const renderSyncBadge = (status?: string) => {
     switch (status) {
       case "ok":
@@ -406,7 +484,12 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
                 {activeDrawer === "lan" && t("lan.title")}
                 {activeDrawer === "devices" && t("devices.title")}
                 {activeDrawer === "pricing" && t("pricing.title")}
-                {activeDrawer === "config" && t("config.title")}
+                {activeDrawer === "config" && (
+                  <span>
+                    {t("config.title")}
+                    <span className="sr-only"> - {t("settingsPanel")} / SETTINGS PANEL</span>
+                  </span>
+                )}
               </h2>
             </div>
           </div>
@@ -846,6 +929,86 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
           {/* 4. SYSTEM & SCANNER CONFIG PANEL */}
           {activeDrawer === "config" && config && (
             <div className="space-y-5">
+              {/* Version & Auto-Update Card */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-800">
+                      {t("versionAndUpdates")}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="font-mono-num rounded bg-slate-900 px-2 py-0.5 text-xs font-bold text-white">
+                        {versionInfo?.version || t("unknown")}
+                      </span>
+                      <span className="font-mono-num text-[11px] text-slate-500">
+                        {versionInfo ? `${versionInfo.goos}/${versionInfo.goarch}` : t("unknown")}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCheckUpdate}
+                    disabled={checkingUpdate || applyingUpdate}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${checkingUpdate ? "animate-spin" : ""}`} />
+                    <span>{checkingUpdate ? t("checkingUpdates") : t("checkForUpdates")}</span>
+                  </button>
+                </div>
+
+                {updateError && (
+                  <div role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                    {updateError}
+                  </div>
+                )}
+
+                {updateResult && (
+                  <div role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-700">
+                    {updateResult}
+                  </div>
+                )}
+
+                {updateStatus && !updateStatus.has_update && !updateError && (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-600">
+                    {t("alreadyLatest")}
+                  </div>
+                )}
+
+                {updateStatus?.has_update && (
+                  <div className="mt-3 space-y-2 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-amber-900">
+                        🚀 {t("newVersionAvailable")}:{" "}
+                        <span className="font-mono-num font-bold underline">
+                          {updateStatus.latest_version}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleApplyUpdate}
+                        disabled={applyingUpdate}
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {applyingUpdate ? t("updating") : t("applyUpdate")}
+                      </button>
+                    </div>
+
+                    {updateStatus.asset_name && (
+                      <div className="font-mono-num text-[11px] text-amber-700">
+                        {updateStatus.asset_name}
+                      </div>
+                    )}
+
+                    {updateStatus.release_notes && (
+                      <div className="max-h-32 overflow-y-auto rounded border border-amber-200/80 bg-white/80 p-2 font-mono text-[11px] text-slate-700 whitespace-pre-wrap">
+                        {updateStatus.release_notes}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <label className="flex items-center justify-between rounded-lg border border-slate-200 px-3.5 py-2.5 text-xs font-medium text-slate-700">
                 <span>{t("config.auto_start")}</span>
                 <input

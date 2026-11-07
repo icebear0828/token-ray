@@ -170,5 +170,24 @@
     "logs_unavailable": "Cannot open directly here. Use the path above.",
     "save_btn": "Save Configuration",
     "saved_toast": "Configuration saved"
-  }
+  },
+  "settings": "Settings",
+  "systemConfig": "System Config",
+  "settingsPanel": "Settings Panel",
+  "versionAndUpdates": "Version & Auto-Update",
+  "currentVersion": "Current Version",
+  "latestVersion": "Latest Version",
+  "checkForUpdates": "Check for Updates",
+  "checkingUpdates": "Checking for updates...",
+  "alreadyLatest": "You are on the latest version.",
+  "newVersionAvailable": "New Version Available",
+  "applyUpdate": "Apply Update",
+  "updating": "Applying update...",
+  "updateSuccess": "Update applied successfully! Please restart the application.",
+  "updateFailed": "Update failed",
+  "releaseNotes": "Release Notes",
+  "viewDetails": "View Details",
+  "platform": "Platform",
+  "unknown": "Unknown",
+  "noUpdateAsset": "No matching update asset found for your platform."
 }
