@@ -29,8 +29,8 @@ func TestScanAll_FullScan(t *testing.T) {
 	// Write 3 usage lines
 	os.WriteFile(logFile, []byte(content+content+content), 0644)
 
-	s := scanner.New(database, calc, "test-device")
-	count, err := s.ScanAll([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "test-device"))
+	count, err := s.ScanAll([]string{logDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,14 +59,14 @@ func TestScanAll_IncrementalScan(t *testing.T) {
 
 	// First scan: 2 lines
 	os.WriteFile(logFile, []byte(line+line), 0644)
-	s := scanner.New(database, calc, "local")
-	count1, _ := s.ScanAll([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	count1, _ := s.ScanAll([]string{logDir})
 	if count1 != 2 {
 		t.Errorf("first scan: expected 2, got %d", count1)
 	}
 
 	// Second scan without changes: should be 0
-	count2, _ := s.ScanAll([]string{logDir}, nil)
+	count2, _ := s.ScanAll([]string{logDir})
 	if count2 != 0 {
 		t.Errorf("second scan: expected 0 (no new data), got %d", count2)
 	}
@@ -77,7 +77,7 @@ func TestScanAll_IncrementalScan(t *testing.T) {
 	f.Close()
 
 	// Third scan: only the new line
-	count3, _ := s.ScanAll([]string{logDir}, nil)
+	count3, _ := s.ScanAll([]string{logDir})
 	if count3 != 1 {
 		t.Errorf("third scan: expected 1 (incremental), got %d", count3)
 	}
@@ -97,11 +97,11 @@ func TestScanAllStrictReturnsFileErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := scanner.New(database, calc, "local")
-	if _, err := s.ScanAllStrict([]string{logDir}, nil); err == nil {
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	if _, err := s.ScanAllStrict([]string{logDir}); err == nil {
 		t.Fatal("expected strict scan to return the closed database error")
 	}
-	if count, err := s.ScanAll([]string{logDir}, nil); err != nil || count != 0 {
+	if count, err := s.ScanAll([]string{logDir}); err != nil || count != 0 {
 		t.Fatalf("non-strict scan should skip file errors, count=%d err=%v", count, err)
 	}
 }
@@ -122,8 +122,8 @@ func TestScanAll_GeminiFormat(t *testing.T) {
 	) + "\n"
 	os.WriteFile(logFile, []byte(content), 0644)
 
-	s := scanner.New(database, calc, "local")
-	count, _ := s.ScanAll([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	count, _ := s.ScanAll([]string{logDir})
 	if count != 1 {
 		t.Errorf("expected 1, got %d", count)
 	}
@@ -150,8 +150,8 @@ func TestScanAll_GeminiWithoutIDGetsStableUUID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := scanner.New(database, calc, "local")
-	count, err := s.ScanAll([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	count, err := s.ScanAll([]string{logDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestScanAll_GeminiWithoutIDGetsStableUUID(t *testing.T) {
 	if err := database.SetOffset(logFile, 0); err != nil {
 		t.Fatal(err)
 	}
-	count, err = s.ScanAll([]string{logDir}, nil)
+	count, err = s.ScanAll([]string{logDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,15 +189,15 @@ func TestScanAllStrictProcessesFinalLineWithoutTrailingNewline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := scanner.New(database, calc, "local")
-	count, err := s.ScanAll([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	count, err := s.ScanAll([]string{logDir})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
 		t.Fatalf("expected non-strict scan to wait for newline, got %d", count)
 	}
-	count, err = s.ScanAllStrict([]string{logDir}, nil)
+	count, err = s.ScanAllStrict([]string{logDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,8 +218,8 @@ func TestScanAllStrictDoesNotAdvanceInvalidPartialEOF(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := scanner.New(database, calc, "local")
-	count, err := s.ScanAllStrict([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	count, err := s.ScanAllStrict([]string{logDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestScanAllStrictDoesNotAdvanceInvalidPartialEOF(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	count, err = s.ScanAll([]string{logDir}, nil)
+	count, err = s.ScanAll([]string{logDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,8 +283,8 @@ func TestScanAll_ProjectPrefersClaudeCWDOverFolderFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := scanner.New(database, calc, "test-device")
-	count, err := s.ScanAll([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "test-device"))
+	count, err := s.ScanAll([]string{logDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,8 +314,8 @@ func TestScanAll_SkipsNonUsageLines(t *testing.T) {
 `
 	os.WriteFile(logFile, []byte(content), 0644)
 
-	s := scanner.New(database, calc, "local")
-	count, _ := s.ScanAll([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	count, _ := s.ScanAll([]string{logDir})
 	if count != 1 {
 		t.Errorf("expected 1 usage line only, got %d", count)
 	}
@@ -336,8 +336,8 @@ func TestScanAll_FileTruncation(t *testing.T) {
 	) + "\n"
 	os.WriteFile(logFile, []byte(line+line+line), 0644)
 
-	s := scanner.New(database, calc, "local")
-	count1, _ := s.ScanAll([]string{logDir}, nil)
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	count1, _ := s.ScanAll([]string{logDir})
 	if count1 != 3 {
 		t.Errorf("first scan: expected 3, got %d", count1)
 	}
@@ -345,7 +345,7 @@ func TestScanAll_FileTruncation(t *testing.T) {
 	// Truncate and write 1 shorter line (simulates log rotation)
 	os.WriteFile(logFile, []byte(line), 0644)
 
-	count2, _ := s.ScanAll([]string{logDir}, nil)
+	count2, _ := s.ScanAll([]string{logDir})
 	if count2 != 1 {
 		t.Errorf("after truncation: expected 1 (re-read from start), got %d", count2)
 	}

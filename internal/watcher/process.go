@@ -8,6 +8,9 @@ import (
 
 // processFile reads the new lines of the file.
 func (w *Watcher) processFile(path string) {
+	if w.handleFile(path) {
+		return
+	}
 	if !strings.HasSuffix(path, ".jsonl") {
 		return
 	}

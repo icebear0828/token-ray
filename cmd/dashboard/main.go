@@ -2,18 +2,19 @@ package main
 
 import (
 	root "ai-flight-dashboard"
-	"ai-flight-dashboard/internal/agyscanner"
 	"ai-flight-dashboard/internal/alert"
 	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/codexusage"
 	"ai-flight-dashboard/internal/config"
 	"ai-flight-dashboard/internal/db"
 	"ai-flight-dashboard/internal/desktop"
 	"ai-flight-dashboard/internal/forwarder"
 	"ai-flight-dashboard/internal/lan"
 	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/scanner"
+	"ai-flight-dashboard/internal/plugin"
+	"ai-flight-dashboard/internal/source"
+	"ai-flight-dashboard/internal/sources"
 	"ai-flight-dashboard/internal/tui"
+	"ai-flight-dashboard/internal/updater"
 	"ai-flight-dashboard/internal/watcher"
 	"ai-flight-dashboard/internal/web"
 	"context"
@@ -27,6 +28,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -167,7 +169,16 @@ func main() {
 	statsDir := filepath.Join(appDataDir, "stats")
 	os.MkdirAll(statsDir, 0755)
 
-	processLock := acquireProcessLock(appDataDir)
+	// GUI builds have no console; capture startup errors (including lock
+	// conflicts) in a file so "won't open" is diagnosable.
+	if runGui {
+		if f, err := os.OpenFile(filepath.Join(statsDir, "gui.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			log.SetOutput(io.MultiWriter(os.Stderr, f))
+			defer f.Close()
+		}
+	}
+
+	processLock := acquireProcessLock(appDataDir, runGui)
 	defer processLock.Release()
 
 	dbPath := filepath.Join(statsDir, "usage.db")
@@ -213,7 +224,7 @@ func main() {
 		}
 	}
 	queueCodexTelemetryBackfill(database)
-	// Collect scan directories
+	// Collect built-in scan directories for the repair flow.
 	var scanDirs []string
 
 	claudeProjects := filepath.Join(home, ".claude", "projects")
@@ -256,75 +267,113 @@ func main() {
 
 	var lanController *runtimeLANController
 
-	// Fast path: register cached known directories (~1ms vs 134ms recursive)
-	knownDirs, _ := database.ListKnownDirs()
-	if *syncMode == "fsnotify" && len(knownDirs) > 0 {
-		w.WatchKnownDirs(knownDirs)
-		// Also watch roots recursively so new Gemini/Claude session subdirs are not missed.
-		for _, dir := range scanDirs {
-			w.WatchDirRecursive(dir)
+	// Build the source registry: built-ins first, then enabled plugins.
+	registry := source.NewRegistry()
+	registry.Register(sources.NewClaudeSource(home))
+	registry.Register(sources.NewGeminiSource(home))
+	registry.Register(sources.NewExtraDirsSource())
+	registry.Register(sources.NewCodexSource())
+	registry.Register(sources.NewAntigravitySource())
+
+	pluginManager := plugin.NewManager(config.GetDataDir(), updater.CurrentVersion, func(id string) bool {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return true
+		}
+		for _, disabled := range cfg.DisabledPlugins {
+			if disabled == id {
+				return false
+			}
+		}
+		return true
+	})
+	for _, src := range pluginManager.LoadSources() {
+		registry.Register(src)
+	}
+
+	sink := source.NewDBSink(database, calc, *deviceID, func(u model.TokenUsage) {
+		select {
+		case w.UsageChan <- u:
+		default:
+		}
+		select {
+		case w.BroadcastChan <- u:
+		default:
+		}
+	})
+	pluginController := plugin.NewController(pluginManager, registry, w, sink)
+
+	// Route filesystem events to the owning source instead of parsing here.
+	w.SetFileHandler(func(path string) {
+		src := registry.SourceForPath(path)
+		if src == nil {
+			return
+		}
+		fileScanner, ok := src.(source.FileScanner)
+		if !ok {
+			return
+		}
+		if err := fileScanner.ScanFile(ctx, path, sink); err != nil {
+			log.Printf("source %s: scan %s: %v", src.Descriptor().ID, path, err)
+		}
+	})
+
+	if *syncMode == "fsnotify" {
+		for _, src := range registry.All() {
+			for _, dir := range src.WatchDirs() {
+				if _, err := os.Stat(dir); err == nil {
+					_ = w.WatchDirRecursive(dir)
+				}
+			}
 		}
 	}
 
-	// Background: full scan + discover new directories
+	// Background scan loop. Sources own their own incremental cadence; the
+	// JSONL runner does a full directory walk once a minute and cheap
+	// known-file scans in between.
 	go func() {
-		s := scanner.New(database, calc, *deviceID)
-		codexScanner := codexusage.New(database, calc, *deviceID)
-		agyScanner := agyscanner.New(database, calc, *deviceID)
-		s.ScanAll(scanDirs, w.UsageChan) // incremental; auto-caches new dirs to known_dirs
-		codexScanner.Scan(w.UsageChan)
-		agyScanner.Scan(w.UsageChan)
-
-		if *syncMode == "fsnotify" {
-			if len(knownDirs) == 0 {
-				// First run: no cache yet, do full recursive watch
-				for _, dir := range scanDirs {
-					w.WatchDirRecursive(dir)
+		scanAll := func() {
+			for _, src := range registry.All() {
+				if err := src.Scan(ctx, sink); err != nil {
+					log.Printf("source %s scan failed: %v", src.Descriptor().ID, err)
 				}
-			} else {
-				// Subsequent runs: pick up any newly discovered dirs
-				newDirs, _ := database.ListKnownDirs()
-				w.WatchKnownDirs(newDirs)
 			}
-			codexTicker := time.NewTicker(30 * time.Second)
-			defer codexTicker.Stop()
+		}
+		scanAll()
+		switch *syncMode {
+		case "once":
+			return
+		case "fsnotify":
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
 			for {
 				select {
 				case <-ctx.Done():
 					return
-				case <-codexTicker.C:
+				case <-ticker.C:
 					if !w.IsPaused() {
-						codexScanner.Scan(w.UsageChan)
-						agyScanner.Scan(w.UsageChan)
+						scanAll()
 					}
 				}
 			}
-		} else if *syncMode == "poll" {
-			fastTicker := time.NewTicker(2 * time.Second)
-			slowTicker := time.NewTicker(60 * time.Second)
-			defer fastTicker.Stop()
-			defer slowTicker.Stop()
+		default:
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
 			for {
 				select {
 				case <-ctx.Done():
 					return
-				case <-fastTicker.C:
+				case <-ticker.C:
 					if !w.IsPaused() {
-						s.ScanKnownFiles(w.UsageChan)
-						codexScanner.Scan(w.UsageChan)
-						agyScanner.Scan(w.UsageChan)
-					}
-				case <-slowTicker.C:
-					if !w.IsPaused() {
-						s.ScanAll(scanDirs, w.UsageChan)
+						scanAll()
 					}
 				}
 			}
 		}
-		// "once" mode does nothing more
 	}()
 
-	// Background goroutine shared by web/gui modes: drain watcher events and persist to DB
+	// Background goroutine shared by web/gui modes: persist remote LAN events.
+	// Local usage is already written by the source sink.
 	startDBDrain := func() {
 		go func() {
 			for {
@@ -337,9 +386,7 @@ func main() {
 					}
 					isLocal := (u.DeviceID == "" || u.DeviceID == *deviceID)
 
-					// fsnotify events are inserted here; poll scanners already inserted
-					// their records before sending usage notifications.
-					if !isLocal || *syncMode == "fsnotify" {
+					if !isLocal {
 						cost, _ := calc.CalculateCost(u.Model, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens)
 
 						effectiveDevice := u.DeviceID
@@ -371,6 +418,9 @@ func main() {
 		startDBDrain()
 
 		app := desktop.NewApp(database, calc)
+		tray := desktop.NewTray(app)
+		tray.Start()
+		defer tray.Stop()
 
 		// Build system tray / application menu
 		appMenu := menu.NewMenu()
@@ -410,7 +460,10 @@ func main() {
 		})
 
 		// Reuse the existing HTTP handler inside Wails.
-		apiHandler := web.NewHandlerWithLANController(database, calc, w, lanController, *token, root.DistBinFS)
+		apiHandler := web.NewHandlerWithDeps(database, calc, w, lanController, *token, root.DistBinFS, web.HandlerDeps{
+			Sources: registry,
+			Plugins: pluginController,
+		})
 
 		guiOptions := &options.App{
 			Title:     "AI Flight Dashboard",
@@ -457,7 +510,10 @@ func main() {
 		})
 
 		// Web dashboard mode with graceful shutdown
-		handler := web.NewHandlerWithLANController(database, calc, w, lanController, *token, root.DistBinFS)
+		handler := web.NewHandlerWithDeps(database, calc, w, lanController, *token, root.DistBinFS, web.HandlerDeps{
+			Sources: registry,
+			Plugins: pluginController,
+		})
 		srv := &http.Server{Addr: "0.0.0.0:" + *port, Handler: handler}
 		ln, err := net.Listen("tcp", srv.Addr)
 		if err != nil {
@@ -507,8 +563,7 @@ func main() {
 		}
 	}
 
-	skipDBWrite := (*syncMode != "fsnotify")
-	p := tea.NewProgram(tui.NewModel(calc, w, database, budgetAlert, skipDBWrite))
+	p := tea.NewProgram(tui.NewModel(calc, w, database, budgetAlert))
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)

@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"ai-flight-dashboard/internal/watcher"
 )
 
 var logPortRe = regexp.MustCompile(`listening on random port at (\d+) for HTTP$`)
@@ -21,9 +19,9 @@ var logPortRe = regexp.MustCompile(`listening on random port at (\d+) for HTTP$`
 // Backfill resumes historical agy conversations. It first scans transcripts
 // on disk, then falls back to `agy --print` for any remaining conversations.
 // Returns the total number of new records inserted.
-func (s *Scanner) Backfill(usageChan chan<- watcher.TokenUsage) (int, error) {
+func (s *Scanner) Backfill() (int, error) {
 	total := 0
-	if n, err := s.ScanTranscripts(usageChan); err == nil {
+	if n, err := s.ScanTranscripts(); err == nil {
 		total += n
 	}
 
@@ -37,7 +35,7 @@ func (s *Scanner) Backfill(usageChan chan<- watcher.TokenUsage) (int, error) {
 	for i, convID := range convIDs {
 		log.Printf("[agy backfill] (%d/%d) resuming conversation %s", i+1, len(convIDs), convID)
 
-		n, err := s.backfillConversation(convID, workspaces, usageChan)
+		n, err := s.backfillConversation(convID, workspaces)
 		if err != nil {
 			log.Printf("[agy backfill] conversation %s failed: %v", convID, err)
 			continue
@@ -50,7 +48,7 @@ func (s *Scanner) Backfill(usageChan chan<- watcher.TokenUsage) (int, error) {
 	return total, nil
 }
 
-func (s *Scanner) backfillConversation(convID string, workspaces map[string]string, usageChan chan<- watcher.TokenUsage) (int, error) {
+func (s *Scanner) backfillConversation(convID string, workspaces map[string]string) (int, error) {
 	logFile := filepath.Join(os.TempDir(), fmt.Sprintf("agy-backfill-%s.log", convID))
 	defer os.Remove(logFile)
 
@@ -85,7 +83,7 @@ func (s *Scanner) backfillConversation(convID string, workspaces map[string]stri
 	// Small delay for conversation to finish loading after HTTP server starts.
 	time.Sleep(500 * time.Millisecond)
 
-	n, scanErr := s.scanTrajectory(port, convID, workspaces, usageChan)
+	n, scanErr := s.scanTrajectory(port, convID, workspaces)
 	if scanErr != nil {
 		log.Printf("[agy backfill] scanTrajectory(%s) on port %d: %v", convID, port, scanErr)
 	}
@@ -156,7 +154,7 @@ func (s *Scanner) unscannedConversations() []string {
 			}
 			seen[convID] = true
 			offsetKey := "agy:" + convID + ":gmCount"
-			count, _ := s.db.GetOffset(offsetKey)
+			count, _ := s.sink.Offset(offsetKey)
 			if count == 0 {
 				unscanned = append(unscanned, convID)
 			}

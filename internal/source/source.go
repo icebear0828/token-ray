@@ -1,0 +1,65 @@
+// Package source defines the contract between the dashboard and the tools it
+// monitors. Built-in sources and declarative plugin sources both implement
+// Source, so the runtime treats them identically.
+package source
+
+import (
+	"context"
+
+	"ai-flight-dashboard/internal/model"
+)
+
+// Descriptor describes a source for the registry and the UI.
+type Descriptor struct {
+	ID          string `json:"id"`
+	Source      string `json:"source"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Builtin     bool   `json:"builtin"`
+	Hidden      bool   `json:"hidden,omitempty"`
+}
+
+// Source is a tool whose logs can be scanned for token usage.
+type Source interface {
+	Descriptor() Descriptor
+	// WatchDirs returns directories that should receive filesystem events.
+	// Sources that only support polling return nil.
+	WatchDirs() []string
+	// Scan performs one incremental scan. Implementations must be idempotent:
+	// re-reading the same data must not create duplicate records.
+	Scan(ctx context.Context, sink Sink) error
+}
+
+// FileScanner is implemented by sources that can incrementally scan a single
+// file. The runtime calls it for filesystem events instead of re-walking the
+// whole source.
+type FileScanner interface {
+	ScanFile(ctx context.Context, path string, sink Sink) error
+}
+
+// Sink is the persistence surface available to a source. The host computes
+// cost, deduplicates, and broadcasts events; sources only describe usage.
+type Sink interface {
+	DeviceID() string
+	Emit(u model.TokenUsage, filePath string) error
+	Offset(key string) (int64, error)
+	SetOffset(key string, offset int64) error
+	Supersede(source, filePath, deviceID, uuidPrefix string) (int64, error)
+}
+
+// JSONLStore is the additional storage surface used by line-oriented scanners.
+type JSONLStore interface {
+	Sink
+	KnownFiles() ([]string, error)
+	UpsertKnownDir(dir string) error
+}
+
+// LineParser turns one log line into usage. projectHint is returned even when
+// the line is not a usage record, so scanners can carry project metadata
+// forward within a file.
+type LineParser interface {
+	Parse(line string) (u model.TokenUsage, projectHint string, ok bool)
+	ProjectFromPath(path string) string
+	FallbackUUID(deviceID, path string, lineStartOffset int64, u model.TokenUsage) string
+}

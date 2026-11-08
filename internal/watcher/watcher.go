@@ -27,6 +27,8 @@ type Watcher struct {
 	recursiveDirs map[string]bool // tracks dirs registered for recursive watching
 	DeviceID      string
 	paused        atomic.Bool
+	handlerMu     sync.RWMutex
+	fileHandler   func(string)
 }
 
 func New(deviceID string) (*Watcher, error) {
@@ -55,6 +57,25 @@ func (w *Watcher) IsPaused() bool {
 
 func (w *Watcher) SetPaused(p bool) {
 	w.paused.Store(p)
+}
+
+// SetFileHandler replaces the built-in JSONL parser with a callback. The
+// dashboard uses this to route filesystem events to registered sources.
+func (w *Watcher) SetFileHandler(fn func(string)) {
+	w.handlerMu.Lock()
+	w.fileHandler = fn
+	w.handlerMu.Unlock()
+}
+
+func (w *Watcher) handleFile(path string) bool {
+	w.handlerMu.RLock()
+	fn := w.fileHandler
+	w.handlerMu.RUnlock()
+	if fn == nil {
+		return false
+	}
+	fn(path)
+	return true
 }
 
 func (w *Watcher) WatchDir(dir string) error {

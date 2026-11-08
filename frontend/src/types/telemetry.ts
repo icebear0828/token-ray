@@ -137,6 +137,48 @@ export interface AppConfig {
   enable_lan?: boolean;
   extra_peer_hosts?: string[];
   tailscale_discovery?: boolean;
+  disabled_plugins?: string[];
+  plugin_index_url?: string;
+}
+
+// Backend shape: internal/source/source.go Descriptor
+export interface SourceDescriptor {
+  id: string;
+  source: string;
+  label: string;
+  description?: string;
+  version?: string;
+  builtin: boolean;
+}
+
+// Backend shape: internal/plugin/manifest.go
+export interface PluginManifest {
+  schema_version: number;
+  id: string;
+  name: string;
+  source: string;
+  label?: string;
+  version: string;
+  min_app_version?: string;
+  description?: string;
+  author?: string;
+  homepage?: string;
+}
+
+export interface InstalledPlugin {
+  manifest: PluginManifest;
+  path: string;
+  enabled: boolean;
+}
+
+export interface PluginIndexEntry {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  min_app_version?: string;
+  download_url: string;
+  sha256?: string;
 }
 
 // Backend shape: internal/model/stats.go DeviceSummary

@@ -10,9 +10,25 @@ import (
 	"strings"
 	"testing"
 
+	"ai-flight-dashboard/internal/calculator"
+	"ai-flight-dashboard/internal/db"
+	"ai-flight-dashboard/internal/model"
+	"ai-flight-dashboard/internal/source"
 	"ai-flight-dashboard/internal/testutil"
 	"ai-flight-dashboard/internal/watcher"
 )
+
+func newTestSink(t *testing.T, database *db.DB, calc *calculator.Calculator, deviceID string) (source.Sink, chan watcher.TokenUsage) {
+	t.Helper()
+	ch := make(chan watcher.TokenUsage, 100)
+	sink := source.NewDBSink(database, calc, deviceID, func(u model.TokenUsage) {
+		select {
+		case ch <- u:
+		default:
+		}
+	})
+	return sink, ch
+}
 
 func fakeTrajectoryJSON(cascadeID string, steps []GeneratorMetadata) string {
 	resp := TrajectoryResponse{
@@ -119,16 +135,14 @@ func TestScanIncrementalOffset(t *testing.T) {
 
 	port := portFromURL(t, srv.URL)
 	database, calc := testutil.NewTestDBAndCalc(t)
+	sink, ch := newTestSink(t, database, calc, "test-device")
 	s := &Scanner{
-		db:       database,
-		calc:     calc,
-		DeviceID: "test-device",
+		sink:     sink,
 		LogDir:   t.TempDir(),
 		HistPath: filepath.Join(t.TempDir(), "history.jsonl"),
 	}
 
-	ch := make(chan watcher.TokenUsage, 100)
-	n, err := s.ScanWithPort(port, ch)
+	n, err := s.ScanWithPort(port)
 	if err != nil {
 		t.Fatalf("first scan: %v", err)
 	}
@@ -143,7 +157,7 @@ func TestScanIncrementalOffset(t *testing.T) {
 	}
 
 	// Second scan with same data — should produce 0 new records
-	n, err = s.ScanWithPort(port, ch)
+	n, err = s.ScanWithPort(port)
 	if err != nil {
 		t.Fatalf("second scan: %v", err)
 	}
@@ -153,7 +167,7 @@ func TestScanIncrementalOffset(t *testing.T) {
 
 	// Add a second step
 	currentSteps = []GeneratorMetadata{step1, step2}
-	n, err = s.ScanWithPort(port, ch)
+	n, err = s.ScanWithPort(port)
 	if err != nil {
 		t.Fatalf("third scan: %v", err)
 	}
@@ -320,18 +334,16 @@ func TestScanTranscripts(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	sink, usageChan := newTestSink(t, database, calc, "local")
 	scanner := &Scanner{
-		db:           database,
-		calc:         calc,
-		DeviceID:     "local",
+		sink:         sink,
 		LogDir:       filepath.Join(dir, "log"),
 		HistPath:     histPath,
 		BrainDir:     brainDir,
 		SettingsPath: settingsPath,
 	}
 
-	usageChan := make(chan watcher.TokenUsage, 10)
-	n, err := scanner.Scan(usageChan)
+	n, err := scanner.Scan()
 	if err != nil {
 		t.Fatalf("scanner.Scan: %v", err)
 	}
@@ -356,7 +368,7 @@ func TestScanTranscripts(t *testing.T) {
 	}
 
 	// Second scan should be incremental (0 new records)
-	n2, err := scanner.Scan(usageChan)
+	n2, err := scanner.Scan()
 	if err != nil {
 		t.Fatalf("second scanner.Scan: %v", err)
 	}

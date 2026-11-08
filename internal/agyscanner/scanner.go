@@ -12,28 +12,24 @@ import (
 	"time"
 
 	"ai-flight-dashboard/internal/antigravity"
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/db"
+	"ai-flight-dashboard/internal/model"
+	"ai-flight-dashboard/internal/source"
 	"ai-flight-dashboard/internal/watcher"
 )
 
 type Scanner struct {
-	db           *db.DB
-	calc         *calculator.Calculator
-	DeviceID     string
+	sink         source.Sink
 	LogDir       string
 	HistPath     string
 	BrainDir     string
 	SettingsPath string
 }
 
-func New(database *db.DB, calc *calculator.Calculator, deviceID string) *Scanner {
+func New(sink source.Sink) *Scanner {
 	home, _ := os.UserHomeDir()
 	base := filepath.Join(home, ".gemini", "antigravity-cli")
 	return &Scanner{
-		db:           database,
-		calc:         calc,
-		DeviceID:     deviceID,
+		sink:         sink,
 		LogDir:       filepath.Join(base, "log"),
 		HistPath:     filepath.Join(base, "history.jsonl"),
 		BrainDir:     filepath.Join(base, "brain"),
@@ -41,9 +37,9 @@ func New(database *db.DB, calc *calculator.Calculator, deviceID string) *Scanner
 	}
 }
 
-func (s *Scanner) Scan(usageChan chan<- watcher.TokenUsage) (int, error) {
+func (s *Scanner) Scan() (int, error) {
 	total := 0
-	if n, err := s.ScanTranscripts(usageChan); err == nil {
+	if n, err := s.ScanTranscripts(); err == nil {
 		total += n
 	}
 
@@ -59,7 +55,7 @@ func (s *Scanner) Scan(usageChan chan<- watcher.TokenUsage) (int, error) {
 			continue
 		}
 		for cascadeID := range summaries {
-			n, err := s.scanTrajectory(ap.Port, cascadeID, workspaces, usageChan)
+			n, err := s.scanTrajectory(ap.Port, cascadeID, workspaces)
 			if err != nil {
 				continue
 			}
@@ -69,9 +65,9 @@ func (s *Scanner) Scan(usageChan chan<- watcher.TokenUsage) (int, error) {
 	return total, nil
 }
 
-func (s *Scanner) scanTrajectory(port int, cascadeID string, workspaces map[string]string, usageChan chan<- watcher.TokenUsage) (int, error) {
+func (s *Scanner) scanTrajectory(port int, cascadeID string, workspaces map[string]string) (int, error) {
 	offsetKey := "agy:" + cascadeID + ":gmCount"
-	lastCount, _ := s.db.GetOffset(offsetKey)
+	lastCount, _ := s.sink.Offset(offsetKey)
 
 	resp, err := getTrajectory(port, cascadeID)
 	if err != nil {
@@ -108,29 +104,24 @@ func (s *Scanner) scanTrajectory(port int, cascadeID string, workspaces map[stri
 		ts := parseTimestamp(cm.ChatStartMetadata.CreatedAt)
 		uuid := fmt.Sprintf("agy:%s:%d", cascadeID, i)
 
-		cost, _ := s.calc.CalculateCost(modelName, totalInput, cached, 0, output)
-
-		u := watcher.TokenUsage{
+		u := model.TokenUsage{
 			Source:       antigravity.Source,
 			Model:        modelName,
 			Project:      project,
 			InputTokens:  totalInput,
 			CachedTokens: cached,
 			OutputTokens: output,
-			Timestamp:   ts,
-			UUID:        uuid,
+			Timestamp:    ts,
+			UUID:         uuid,
 		}
-		if usageChan != nil {
-			usageChan <- u
-		}
-		if err := s.db.InsertUsageWithTime(u, cost, ts, "agy://"+cascadeID, s.DeviceID); err != nil {
+		if err := s.sink.Emit(u, "agy://"+cascadeID); err != nil {
 			continue
 		}
 		count++
 	}
 
 	if count > 0 || int64(len(gm)) > lastCount {
-		s.db.SetOffset(offsetKey, int64(len(gm)))
+		s.sink.SetOffset(offsetKey, int64(len(gm)))
 	}
 	return count, nil
 }
@@ -215,7 +206,7 @@ func parseTimestamp(s string) time.Time {
 }
 
 // ScanWithPort runs a scan against a specific port (for testing).
-func (s *Scanner) ScanWithPort(port int, usageChan chan<- watcher.TokenUsage) (int, error) {
+func (s *Scanner) ScanWithPort(port int) (int, error) {
 	workspaces := s.loadWorkspaces()
 	summaries, err := getAllTrajectories(port)
 	if err != nil {
@@ -224,7 +215,7 @@ func (s *Scanner) ScanWithPort(port int, usageChan chan<- watcher.TokenUsage) (i
 
 	total := 0
 	for cascadeID := range summaries {
-		n, err := s.scanTrajectory(port, cascadeID, workspaces, usageChan)
+		n, err := s.scanTrajectory(port, cascadeID, workspaces)
 		if err != nil {
 			continue
 		}
@@ -265,7 +256,7 @@ func (s *Scanner) loadDefaultModel() string {
 	return "gemini-3.8-flash"
 }
 
-func (s *Scanner) ScanTranscripts(usageChan chan<- watcher.TokenUsage) (int, error) {
+func (s *Scanner) ScanTranscripts() (int, error) {
 	if s.BrainDir == "" {
 		return 0, nil
 	}
@@ -294,24 +285,24 @@ func (s *Scanner) ScanTranscripts(usageChan chan<- watcher.TokenUsage) (int, err
 		}
 
 		offsetKey := "agy:transcript:" + cascadeID
-		lastOffset, _ := s.db.GetOffset(offsetKey)
+		lastOffset, _ := s.sink.Offset(offsetKey)
 		if info.Size() <= lastOffset {
 			continue
 		}
 
-		n, newOffset, err := s.scanTranscriptFile(transcriptPath, cascadeID, lastOffset, defaultModel, workspaces, usageChan)
+		n, newOffset, err := s.scanTranscriptFile(transcriptPath, cascadeID, lastOffset, defaultModel, workspaces)
 		if err != nil {
 			continue
 		}
 		if newOffset > lastOffset {
-			s.db.SetOffset(offsetKey, newOffset)
+			s.sink.SetOffset(offsetKey, newOffset)
 		}
 		total += n
 	}
 	return total, nil
 }
 
-func (s *Scanner) scanTranscriptFile(path, cascadeID string, fromOffset int64, defaultModel string, workspaces map[string]string, usageChan chan<- watcher.TokenUsage) (int, int64, error) {
+func (s *Scanner) scanTranscriptFile(path, cascadeID string, fromOffset int64, defaultModel string, workspaces map[string]string) (int, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return 0, fromOffset, err
@@ -350,8 +341,7 @@ func (s *Scanner) scanTranscriptFile(path, cascadeID string, fromOffset int64, d
 					ts := parseTimestamp(entry.CreatedAt)
 					uuid := fmt.Sprintf("agy:%s:%d", cascadeID, entry.StepIndex)
 
-					cost, _ := s.calc.CalculateCost(currentModel, totalInput, cached, 0, output)
-					u := watcher.TokenUsage{
+					u := model.TokenUsage{
 						Source:       antigravity.Source,
 						Model:        currentModel,
 						Project:      project,
@@ -361,10 +351,7 @@ func (s *Scanner) scanTranscriptFile(path, cascadeID string, fromOffset int64, d
 						Timestamp:    ts,
 						UUID:         uuid,
 					}
-					if usageChan != nil {
-						usageChan <- u
-					}
-					if err := s.db.InsertUsageWithTime(u, cost, ts, path, s.DeviceID); err == nil {
+					if err := s.sink.Emit(u, path); err == nil {
 						inserted++
 					}
 				}

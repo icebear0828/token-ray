@@ -13,6 +13,8 @@ type AppConfig struct {
 	EnableLAN          *bool    `json:"enable_lan,omitempty"`
 	ExtraPeerHosts     []string `json:"extra_peer_hosts,omitempty"`
 	TailscaleDiscovery *bool    `json:"tailscale_discovery,omitempty"`
+	DisabledPlugins    []string `json:"disabled_plugins,omitempty"`
+	PluginIndexURL     string   `json:"plugin_index_url,omitempty"`
 }
 
 // customDir allows overriding the data directory at runtime.

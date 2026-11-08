@@ -12,6 +12,7 @@ import (
 	"ai-flight-dashboard/internal/agyscanner"
 	"ai-flight-dashboard/internal/calculator"
 	"ai-flight-dashboard/internal/db"
+	"ai-flight-dashboard/internal/source"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -44,7 +45,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("create calc: %v", err)
 	}
-	scanner := agyscanner.New(database, calc, "e2e-device")
+	sink := source.NewDBSink(database, calc, "e2e-device", nil)
+	scanner := agyscanner.New(sink)
 
 	rawDB, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -56,7 +58,7 @@ func main() {
 
 	for run := 1; run <= 3; run++ {
 		start := time.Now()
-		n, err := scanner.Scan(nil)
+		n, err := scanner.Scan()
 		duration := time.Since(start)
 		if err != nil {
 			log.Fatalf("Run %d failed: %v", run, err)

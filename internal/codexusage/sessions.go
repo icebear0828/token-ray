@@ -46,7 +46,7 @@ type codexSessionTotal struct {
 	hasTokens bool
 }
 
-func (s *Scanner) scanSessions(threads map[string]threadInfo, usageChan chan<- watcher.TokenUsage) (int, bool, error) {
+func (s *Scanner) scanSessions(threads map[string]threadInfo) (int, bool, error) {
 	if s.SessionsDir == "" {
 		return 0, false, nil
 	}
@@ -63,7 +63,7 @@ func (s *Scanner) scanSessions(threads map[string]threadInfo, usageChan chan<- w
 		if entry.IsDir() || filepath.Ext(path) != ".jsonl" {
 			return nil
 		}
-		n, hasTotals, err := s.scanSessionFile(path, threads, usageChan)
+		n, hasTotals, err := s.scanSessionFile(path, threads)
 		if err != nil {
 			return err
 		}
@@ -79,13 +79,13 @@ func (s *Scanner) scanSessions(threads map[string]threadInfo, usageChan chan<- w
 	return count, hasSessionTotals, nil
 }
 
-func (s *Scanner) scanSessionFile(path string, threads map[string]threadInfo, usageChan chan<- watcher.TokenUsage) (int, bool, error) {
+func (s *Scanner) scanSessionFile(path string, threads map[string]threadInfo) (int, bool, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return 0, false, nil
 	}
 	offsetKey := "codex:session:" + filepath.ToSlash(path)
-	offset, err := s.db.GetOffset(offsetKey)
+	offset, err := s.sink.Offset(offsetKey)
 	if err != nil {
 		return 0, false, err
 	}
@@ -126,15 +126,11 @@ func (s *Scanner) scanSessionFile(path string, threads map[string]threadInfo, us
 		Timestamp:    total.ts,
 		UUID:         "codex-session:" + total.id,
 	}
-	cost, _ := s.calc.CalculateCost(usage.Model, usage.InputTokens, usage.CachedTokens, usage.CacheCreationTokens, usage.OutputTokens)
-	if err := s.db.InsertUsageWithTime(usage, cost, usage.Timestamp, path, s.DeviceID); err != nil {
+	if err := s.sink.Emit(usage, path); err != nil {
 		return 0, true, err
 	}
-	if err := s.db.SetOffset(offsetKey, info.Size()); err != nil {
+	if err := s.sink.SetOffset(offsetKey, info.Size()); err != nil {
 		return 0, true, err
-	}
-	if usageChan != nil {
-		usageChan <- usage
 	}
 	return 1, true, nil
 }

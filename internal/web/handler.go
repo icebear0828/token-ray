@@ -14,12 +14,42 @@ import (
 )
 
 func NewHandler(database *db.DB, calc *calculator.Calculator, wInst *watcher.Watcher, lanInst *lan.LAN, token string, distBinFS embed.FS) http.Handler {
-	return NewHandlerWithLANController(database, calc, wInst, newStaticLANController(lanInst), token, distBinFS)
+	return NewHandlerWithDeps(database, calc, wInst, newStaticLANController(lanInst), token, distBinFS, HandlerDeps{})
 }
 
 func NewHandlerWithLANController(database *db.DB, calc *calculator.Calculator, wInst *watcher.Watcher, lanControl LANController, token string, distBinFS embed.FS) http.Handler {
+	return NewHandlerWithDeps(database, calc, wInst, lanControl, token, distBinFS, HandlerDeps{})
+}
+
+// HandlerDeps carries optional runtime services such as the source registry
+// and plugin manager. Existing callers can use the shorter constructors.
+type HandlerDeps struct {
+	Sources SourceProvider
+	Plugins PluginController
+}
+
+const maxPluginUpload = 12 << 20
+
+func NewHandlerWithDeps(database *db.DB, calc *calculator.Calculator, wInst *watcher.Watcher, lanControl LANController, token string, distBinFS embed.FS, deps HandlerDeps) http.Handler {
 	mux := http.NewServeMux()
 	statsCache := dashboard.NewStatsCache(2 * time.Second)
+
+	mux.HandleFunc("/api/sources", func(w http.ResponseWriter, r *http.Request) {
+		handleSources(w, r, deps.Sources)
+	})
+
+	mux.HandleFunc("/api/plugins", func(w http.ResponseWriter, r *http.Request) {
+		handlePlugins(w, r, deps.Plugins)
+	})
+	mux.HandleFunc("/api/plugins/install", authMiddleware(token, func(w http.ResponseWriter, r *http.Request) {
+		handlePluginInstall(w, r, deps.Plugins)
+	}))
+	mux.HandleFunc("/api/plugins/index", func(w http.ResponseWriter, r *http.Request) {
+		handlePluginIndex(w, r, deps.Plugins)
+	})
+	mux.HandleFunc("/api/plugins/", authMiddleware(token, func(w http.ResponseWriter, r *http.Request) {
+		handlePluginAction(w, r, deps.Plugins)
+	}))
 
 	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
 		handleStats(w, r, database, calc, wInst, statsCache)

@@ -8,34 +8,49 @@ import (
 	"strings"
 	"time"
 
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/db"
+	"ai-flight-dashboard/internal/model"
+	"ai-flight-dashboard/internal/source"
 	"ai-flight-dashboard/internal/watcher"
 )
 
+// Scanner reads line-oriented log files incrementally and emits usage through
+// a source.Sink. It is shared by built-in sources and declarative plugins.
 type Scanner struct {
-	db       *db.DB
-	calc     *calculator.Calculator
-	DeviceID string
+	sink   source.JSONLStore
+	parser source.LineParser
+	match  func(string) bool
 }
 
-func New(database *db.DB, calc *calculator.Calculator, deviceID string) *Scanner {
-	return &Scanner{db: database, calc: calc, DeviceID: deviceID}
+// New creates a Scanner for JSONL files using the default Claude/Gemini parser.
+func New(sink source.JSONLStore) *Scanner {
+	return NewWithParser(sink, defaultParser{}, isJSONL)
 }
 
-// ScanAll walks all dirs, finds .jsonl files, reads from last offset, parses usage, inserts into DB.
-// Returns the number of new usage records inserted.
-func (s *Scanner) ScanAll(dirs []string, usageChan chan<- watcher.TokenUsage) (int, error) {
-	return s.scanAll(dirs, usageChan, false)
+// NewWithParser creates a Scanner with a custom parser and file matcher.
+func NewWithParser(sink source.JSONLStore, parser source.LineParser, match func(string) bool) *Scanner {
+	if match == nil {
+		match = isJSONL
+	}
+	return &Scanner{sink: sink, parser: parser, match: match}
+}
+
+func isJSONL(path string) bool {
+	return strings.HasSuffix(path, ".jsonl")
+}
+
+// ScanAll walks all dirs, finds matching files, reads from the last offset,
+// parses usage, and emits it. Returns the number of new usage records.
+func (s *Scanner) ScanAll(dirs []string) (int, error) {
+	return s.scanAll(dirs, false)
 }
 
 // ScanAllStrict is used by repair flows where silently skipping a replay file
 // could leave repaired history incomplete.
-func (s *Scanner) ScanAllStrict(dirs []string, usageChan chan<- watcher.TokenUsage) (int, error) {
-	return s.scanAll(dirs, usageChan, true)
+func (s *Scanner) ScanAllStrict(dirs []string) (int, error) {
+	return s.scanAll(dirs, true)
 }
 
-func (s *Scanner) scanAll(dirs []string, usageChan chan<- watcher.TokenUsage, strict bool) (int, error) {
+func (s *Scanner) scanAll(dirs []string, strict bool) (int, error) {
 	total := 0
 	for _, dir := range dirs {
 		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -45,10 +60,10 @@ func (s *Scanner) scanAll(dirs []string, usageChan chan<- watcher.TokenUsage, st
 				}
 				return nil // skip inaccessible
 			}
-			if d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			if d.IsDir() || !s.match(path) {
 				return nil
 			}
-			n, err := s.scanFile(path, usageChan, strict)
+			n, err := s.scanFile(path, strict)
 			if err != nil {
 				if strict {
 					return err
@@ -65,39 +80,62 @@ func (s *Scanner) scanAll(dirs []string, usageChan chan<- watcher.TokenUsage, st
 	return total, nil
 }
 
-// ScanKnownFiles reads all known file paths from the database and directly stats them.
-// This is extremely fast (<1ms) compared to ScanAll, avoiding directory traversal overhead.
-func (s *Scanner) ScanKnownFiles(usageChan chan<- watcher.TokenUsage) (int, error) {
-	files, err := s.db.ListKnownFiles()
+// ScanKnownFiles reads known file paths from the store and directly stats them.
+// This is extremely fast compared to walking directories. When dirs is
+// non-empty, only files under those dirs are considered.
+func (s *Scanner) ScanKnownFiles(dirs []string) (int, error) {
+	files, err := s.sink.KnownFiles()
 	if err != nil {
 		return 0, err
 	}
 
 	total := 0
 	for _, path := range files {
-		// Only check if it exists and hasn't shrunk/disappeared
+		if !s.match(path) || !underDirs(path, dirs) {
+			continue
+		}
 		info, err := os.Stat(path)
 		if err != nil {
 			continue // skip broken files
 		}
-
-		// Optimization: Check offset here to avoid opening file if no new data
-		offset, err := s.db.GetOffset(path)
+		offset, err := s.sink.Offset(path)
 		if err != nil {
 			continue
 		}
 		if info.Size() == offset {
 			continue
 		}
-
-		n, _ := s.scanFile(path, usageChan, false)
+		n, _ := s.scanFile(path, false)
 		total += n
 	}
 	return total, nil
 }
 
-func (s *Scanner) scanFile(path string, usageChan chan<- watcher.TokenUsage, processPartialEOF bool) (int, error) {
-	offset, err := s.db.GetOffset(path)
+// ScanFile incrementally scans one file. It is called for filesystem events.
+func (s *Scanner) ScanFile(path string) (int, error) {
+	if !s.match(path) {
+		return 0, nil
+	}
+	return s.scanFile(path, false)
+}
+
+func underDirs(path string, dirs []string) bool {
+	if len(dirs) == 0 {
+		return false
+	}
+	clean := filepath.Clean(path)
+	for _, dir := range dirs {
+		rel, err := filepath.Rel(filepath.Clean(dir), clean)
+		if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (s *Scanner) scanFile(path string, processPartialEOF bool) (int, error) {
+	offset, err := s.sink.Offset(path)
 	if err != nil {
 		return 0, err
 	}
@@ -124,17 +162,15 @@ func (s *Scanner) scanFile(path string, usageChan chan<- watcher.TokenUsage, pro
 		return 0, err
 	}
 
-	// First pass: collect all entries, dedup by UUID (keep last = final token counts)
+	// Collect all entries, dedup by UUID (keep last = final token counts).
 	type entry struct {
-		u    watcher.TokenUsage
-		cost float64
-		ts   time.Time
+		u  model.TokenUsage
+		ts time.Time
 	}
 	uuidMap := make(map[string]entry) // uuid -> last entry
 	var noUUID []entry                // entries without uuid
 
-	projectName := watcher.ExtractProjectName(path)
-	currentProject := projectName
+	currentProject := s.parser.ProjectFromPath(path)
 
 	reader := bufio.NewReader(file)
 	newOffset := offset
@@ -146,22 +182,21 @@ func (s *Scanner) scanFile(path string, usageChan chan<- watcher.TokenUsage, pro
 		if completeLine || partialEOF {
 			lineStartOffset := newOffset
 			line := string(lineBytes)
-			if project := watcher.ExtractProjectNameFromLine(line); project != "" {
-				currentProject = project
+			u, projectHint, ok := s.parser.Parse(line)
+			if projectHint != "" {
+				currentProject = projectHint
 			}
-			u, ok := watcher.ParseLine(line)
 			if ok {
 				newOffset += int64(len(lineBytes))
 				u = watcher.WithProjectFallback(u, currentProject)
-				if u.Source == "Gemini CLI" && u.UUID == "" {
-					u.UUID = watcher.StableGeminiUUID(s.DeviceID, path, lineStartOffset)
+				if u.UUID == "" {
+					u.UUID = s.parser.FallbackUUID(s.sink.DeviceID(), path, lineStartOffset, u)
 				}
-				cost, _ := s.calc.CalculateCost(u.Model, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens)
 				ts := u.Timestamp
 				if ts.IsZero() {
 					ts = info.ModTime()
 				}
-				e := entry{u: u, cost: cost, ts: ts}
+				e := entry{u: u, ts: ts}
 				if u.UUID != "" {
 					uuidMap[u.UUID] = e // overwrite = keep last
 				} else {
@@ -171,7 +206,7 @@ func (s *Scanner) scanFile(path string, usageChan chan<- watcher.TokenUsage, pro
 				newOffset += int64(len(lineBytes))
 			}
 		} else {
-			// Partial line at EOF, don't advance offset, just break and wait for more
+			// Partial line at EOF, don't advance offset, just break and wait for more.
 			break
 		}
 		if err != nil {
@@ -179,36 +214,53 @@ func (s *Scanner) scanFile(path string, usageChan chan<- watcher.TokenUsage, pro
 		}
 	}
 
-	// Insert deduplicated entries
+	// Emit deduplicated entries.
 	count := 0
 	for _, e := range uuidMap {
-		if err := s.db.InsertUsageWithTime(e.u, e.cost, e.ts, path, s.DeviceID); err != nil {
+		e.u.Timestamp = e.ts
+		if err := s.sink.Emit(e.u, path); err != nil {
 			return count, err
-		}
-		if usageChan != nil {
-			usageChan <- e.u
 		}
 		count++
 	}
 	for _, e := range noUUID {
-		if err := s.db.InsertUsageWithTime(e.u, e.cost, e.ts, path, s.DeviceID); err != nil {
+		e.u.Timestamp = e.ts
+		if err := s.sink.Emit(e.u, path); err != nil {
 			return count, err
-		}
-		if usageChan != nil {
-			usageChan <- e.u
 		}
 		count++
 	}
 
-	// Cache this directory for fast startup next time
-	if err := s.db.UpsertKnownDir(filepath.Dir(path)); err != nil {
+	// Cache this directory for fast startup next time.
+	if err := s.sink.UpsertKnownDir(filepath.Dir(path)); err != nil {
 		return count, err
 	}
 
-	// Update offset to the end of the last complete line only after inserts succeed.
-	if err := s.db.SetOffset(path, newOffset); err != nil {
+	// Update the offset only after inserts succeed.
+	if err := s.sink.SetOffset(path, newOffset); err != nil {
 		return count, err
 	}
 
 	return count, nil
+}
+
+// defaultParser preserves the original Claude/Gemini behavior for tests and
+// for callers that do not need a source-specific filter.
+type defaultParser struct{}
+
+func (defaultParser) Parse(line string) (model.TokenUsage, string, bool) {
+	project := watcher.ExtractProjectNameFromLine(line)
+	u, ok := watcher.ParseLine(line)
+	return u, project, ok
+}
+
+func (defaultParser) ProjectFromPath(path string) string {
+	return watcher.ExtractProjectName(path)
+}
+
+func (defaultParser) FallbackUUID(deviceID, path string, lineStartOffset int64, u model.TokenUsage) string {
+	if u.Source == "Gemini CLI" {
+		return watcher.StableGeminiUUID(deviceID, path, lineStartOffset)
+	}
+	return ""
 }

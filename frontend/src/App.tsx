@@ -7,6 +7,7 @@ import {
   Globe,
   Laptop,
   Loader2,
+  Package,
   Pause,
   Play,
   Radio,
@@ -14,7 +15,7 @@ import {
   ShieldCheck,
   Sliders,
 } from "lucide-react";
-import { fetchStats, isDesktopRuntime, togglePause } from "./api/client";
+import { fetchSources, fetchStats, isDesktopRuntime, togglePause } from "./api/client";
 import { ActivityHeatmap } from "./components/ActivityHeatmap";
 import { AttributionTables } from "./components/AttributionTables";
 import { DailyCostChart } from "./components/DailyCostChart";
@@ -26,6 +27,7 @@ import {
   CurrencyCode,
   DashboardData,
   PeriodStats,
+  SourceDescriptor,
   TIME_WINDOWS,
   TimeWindowLabel,
 } from "./types/telemetry";
@@ -52,6 +54,7 @@ export function App() {
 
   // Two-stage Telemetry State
   const [data, setData] = useState<DashboardData | null>(null);
+  const [sourceDescriptors, setSourceDescriptors] = useState<SourceDescriptor[]>([]);
   const [isHydratingDetails, setIsHydratingDetails] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
   const [pauseBusy, setPauseBusy] = useState<boolean>(false);
@@ -70,6 +73,16 @@ export function App() {
   }, []);
 
   const requestSeqRef = useRef<number>(0);
+
+  const refreshSources = useCallback(() => {
+    fetchSources()
+      .then((rows) => setSourceDescriptors(rows))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    refreshSources();
+  }, [refreshSources]);
 
   /**
    * Two-stage progressive fetch:
@@ -185,9 +198,12 @@ export function App() {
     );
   }, [data, selectedWindow]);
 
-  // Dynamic list of CLI sources (supports fixed 4 + any future platforms returned by backend)
+  // Dynamic list of CLI sources (built-ins + plugin sources + any source that reported data)
   const availableSources = useMemo(() => {
     const set = new Set<string>(DEFAULT_SOURCES);
+    for (const descriptor of sourceDescriptors) {
+      if (descriptor.source) set.add(descriptor.source);
+    }
     for (const s of data?.sources ?? []) {
       if (s.name) set.add(s.name);
     }
@@ -195,7 +211,7 @@ export function App() {
       if (ts.source) set.add(ts.source);
     }
     return Array.from(set);
-  }, [data]);
+  }, [data, sourceDescriptors]);
 
   // Derived KPI metrics
   const baseInputTokens = calcBaseInput(
@@ -402,6 +418,17 @@ export function App() {
             >
               <Sliders className="h-3.5 w-3.5 text-slate-500" />
               <span className="hidden md:inline">{t("drawers.config_btn")}</span>
+            </button>
+
+            {/* Source Plugins Trigger */}
+            <button
+              type="button"
+              onClick={() => setActiveDrawer("plugins")}
+              aria-label={t("plugins.open_btn")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              <Package className="h-3.5 w-3.5 text-slate-500" />
+              <span className="hidden md:inline">{t("plugins.open_btn")}</span>
             </button>
 
             <div className="h-4 w-px bg-slate-200" />
@@ -778,9 +805,15 @@ export function App() {
          ===================================================================== */}
       <SlideOverDrawers
         activeDrawer={activeDrawer}
-        onClose={() => setActiveDrawer(null)}
+        onClose={() => {
+          setActiveDrawer(null);
+          refreshSources();
+        }}
         currency={currency}
-        onDataMutated={() => loadTelemetry(true)}
+        onDataMutated={() => {
+          loadTelemetry(true);
+          refreshSources();
+        }}
       />
     </div>
   );
