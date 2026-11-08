@@ -60,7 +60,7 @@ test('Codex source tolerates malformed stats without a blank page', async ({ pag
       contentType: 'application/json',
       body: JSON.stringify({
         periods,
-        charts: { daily_costs: [], calendar_heatmap: [], tool_share: [] },
+        charts: { granularity: 'daily', daily_costs: [], calendar_heatmap: [], tool_share: [] },
         sources,
         devices: [{ id: 'windows-box', display_name: 'windows-box' }],
         projects: detail === 'details' && source === 'Codex'

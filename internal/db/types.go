@@ -27,6 +27,13 @@ type PeriodStatsWindow struct {
 	Label string
 	Since time.Time
 }
+
+// Chart bucket granularities supported by QueryDailyCostBuckets.
+const (
+	BucketHourly  = "hourly"
+	BucketDaily   = "daily"
+	BucketMonthly = "monthly"
+)
 type PeriodStatsBucket struct {
 	Label               string
 	Cost                float64

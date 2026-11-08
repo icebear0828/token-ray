@@ -44,10 +44,13 @@ type PeriodCost struct {
 	CacheHitRate        float64 `json:"cache_hit_rate"`
 }
 
-// DailyCostBucket represents one calendar day of spend.
+// DailyCostBucket represents one time bucket of spend and token volume.
+// Date is formatted according to the chart granularity: "2006-01-02 15:00"
+// for hourly buckets, "2006-01-02" for daily, and "2006-01" for monthly.
 type DailyCostBucket struct {
-	Date string  `json:"date"`
-	Cost float64 `json:"cost"`
+	Date   string  `json:"date"`
+	Cost   float64 `json:"cost"`
+	Tokens int     `json:"tokens"`
 }
 
 // CalendarHeatmapBucket represents one GitHub-style calendar heatmap cell.
@@ -68,6 +71,8 @@ type ToolShareBucket struct {
 
 // StatsCharts groups chart-ready aggregates for the dashboard summary.
 type StatsCharts struct {
+	// Granularity is the bucket size used by DailyCosts: hourly, daily or monthly.
+	Granularity     string                  `json:"granularity"`
 	DailyCosts      []DailyCostBucket       `json:"daily_costs"`
 	CalendarHeatmap []CalendarHeatmapBucket `json:"calendar_heatmap"`
 	ToolShare       []ToolShareBucket       `json:"tool_share"`

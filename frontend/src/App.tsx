@@ -103,6 +103,7 @@ export function App() {
         const summaryRes = await fetchStats({
           device: selectedDevice,
           source: selectedSource,
+          period: selectedWindow,
           detail: "summary",
         });
         if (seq !== requestSeqRef.current) return;
@@ -115,10 +116,14 @@ export function App() {
             sources: summaryRes.sources.map((source) => {
               const models = source.models.length
                 ? source.models
-                : previousModels.get(source.name) ?? [];
+                : isBackgroundPoll
+                  ? previousModels.get(source.name) ?? []
+                  : [];
               return { ...source, models };
             }),
-            projects: prev?.projects,
+            // A user-initiated scope change must not keep the previous
+            // window's projects visible while details are in flight.
+            projects: isBackgroundPoll ? prev?.projects : undefined,
           };
         });
         setLoadError("");
@@ -126,6 +131,7 @@ export function App() {
         const detailsRes = await fetchStats({
           device: selectedDevice,
           source: selectedSource,
+          period: selectedWindow,
           detail: "details",
         });
         if (seq !== requestSeqRef.current) return;
@@ -133,8 +139,9 @@ export function App() {
           prev
             ? {
                 ...prev,
-                sources:
-                  detailsRes.sources.length > 0 ? detailsRes.sources : prev.sources,
+                // A successful details response is authoritative even when it
+                // is empty: the selected window/source may have no usage.
+                sources: detailsRes.sources,
                 projects: detailsRes.projects ?? [],
                 is_paused: detailsRes.is_paused ?? prev.is_paused,
               }
@@ -148,7 +155,7 @@ export function App() {
         setIsHydratingDetails(false);
       }
     },
-    [selectedDevice, selectedSource]
+    [selectedDevice, selectedSource, selectedWindow]
   );
 
   // Initial & filter-change two-stage load
@@ -761,12 +768,14 @@ export function App() {
         <TokenTaxonomyStrip period={currentPeriod} />
 
         {/* ===================================================================
-            5. VISUAL ANALYTICS CHARTS (30D DAILY COST + CLI SOURCE SHARE)
+            5. VISUAL ANALYTICS CHARTS (WINDOW-SCOPED TREND + CLI SOURCE SHARE)
            =================================================================== */}
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="lg:col-span-7">
             <DailyCostChart
               data={data?.charts?.daily_costs ?? []}
+              granularity={data?.charts?.granularity ?? "daily"}
+              period={selectedWindow}
               currency={currency}
             />
           </div>
@@ -795,6 +804,7 @@ export function App() {
         <AttributionTables
           sources={data?.sources ?? []}
           projects={data?.projects}
+          windowLabel={selectedWindow}
           isHydratingDetails={isHydratingDetails}
           currency={currency}
         />

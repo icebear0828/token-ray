@@ -1,5 +1,6 @@
 import {
   AppConfig,
+  BucketGranularity,
   DailyCostPoint,
   DashboardData,
   DeviceSummary,
@@ -122,6 +123,10 @@ const normalizeProject = (raw: unknown): ProjectStat => {
   };
 };
 
+const normalizeGranularity = (value: unknown): BucketGranularity => {
+  return value === "hourly" || value === "monthly" ? value : "daily";
+};
+
 export const normalizeDashboardData = (raw: unknown): DashboardData => {
   const root = record(raw);
   const charts = record(root.charts);
@@ -135,9 +140,10 @@ export const normalizeDashboardData = (raw: unknown): DashboardData => {
   return {
     periods: (Array.isArray(root.periods) ? root.periods : []).map(normalizePeriod),
     charts: {
+      granularity: normalizeGranularity(charts.granularity),
       daily_costs: dailyCosts.map((rawPoint): DailyCostPoint => {
         const p = record(rawPoint);
-        return { date: str(p.date), cost: num(p.cost) };
+        return { date: str(p.date), cost: num(p.cost), tokens: num(p.tokens) };
       }),
       calendar_heatmap: heatmap.map((rawPoint): HeatmapPoint => {
         const p = record(rawPoint);
@@ -172,11 +178,13 @@ export const normalizeDashboardData = (raw: unknown): DashboardData => {
 export async function fetchStats(params: {
   device: string;
   source: string;
+  period: string;
   detail: "summary" | "details";
 }): Promise<DashboardData> {
   const qs = new URLSearchParams({
     device: params.device || "all",
     source: params.source || "",
+    period: params.period,
     detail: params.detail,
   });
   const raw = await requestJson<unknown>(`/api/stats?${qs.toString()}`);

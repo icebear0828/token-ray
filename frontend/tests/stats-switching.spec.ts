@@ -219,6 +219,54 @@ test('background refresh keeps project stats visible while details reload', asyn
   expect(pageErrors).toEqual([]);
 });
 
+test('window switching clears previous attribution while details load', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  let heldWindowDetailsRoute: Route | null = null;
+
+  await page.route('**/api/stats?*', async (route) => {
+    const url = new URL(route.request().url());
+    const detail = url.searchParams.get('detail') ?? 'summary';
+    const period = url.searchParams.get('period') ?? '';
+
+    if (detail === 'details' && period === '1h') {
+      heldWindowDetailsRoute = route;
+      return;
+    }
+    if (detail === 'details') {
+      await fulfillJSON(route, detailsPayload('Codex', 'gpt-5.5'));
+      return;
+    }
+
+    await fulfillJSON(route, summaryPayload('Codex'));
+  });
+  await page.route('**/api/lan/scan', fulfillEmptyLANScan);
+  await page.route('**/api/lan/status', fulfillLANStatus);
+
+  await page.goto('/');
+  await expect(page.getByText('gpt-5.5', { exact: true })).toBeVisible();
+  await expect(page.getByText('token', { exact: true })).toBeVisible();
+
+  await page.getByRole('tab', { name: '1h' }).click();
+  await expect.poll(() => heldWindowDetailsRoute !== null).toBe(true);
+
+  // The previous window's model/project must disappear immediately instead of
+  // lingering under the new window while its details request is in flight.
+  await expect(page.getByText('gpt-5.5', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('token', { exact: true })).toHaveCount(0);
+
+  await heldWindowDetailsRoute?.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ ...emptyStatsPayload, sources: [], projects: [] }),
+  });
+
+  await expect(page.getByText('gpt-5.5', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('token', { exact: true })).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+});
+
 test('source switching keeps summary visible when details fail', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));

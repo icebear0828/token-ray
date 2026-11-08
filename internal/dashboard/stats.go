@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"ai-flight-dashboard/internal/calculator"
@@ -9,24 +10,72 @@ import (
 	"ai-flight-dashboard/internal/model"
 )
 
+// periodDurations maps the dashboard time-window labels to their lookback
+// duration. ALL has no lookback and is handled separately.
+var periodDurations = map[string]time.Duration{
+	"1h":  1 * time.Hour,
+	"24h": 24 * time.Hour,
+	"7d":  7 * 24 * time.Hour,
+	"30d": 30 * 24 * time.Hour,
+	"3mo": 90 * 24 * time.Hour,
+	"6mo": 180 * 24 * time.Hour,
+	"1y":  365 * 24 * time.Hour,
+}
+
+// NormalizePeriod normalizes an incoming period query value. The boolean is
+// false when the value is not a recognized window. Empty input means ALL so
+// older clients keep working.
+func NormalizePeriod(period string) (string, bool) {
+	trimmed := strings.TrimSpace(period)
+	if trimmed == "" {
+		return "ALL", true
+	}
+	lower := strings.ToLower(trimmed)
+	if lower == "all" {
+		return "ALL", true
+	}
+	if _, ok := periodDurations[lower]; ok {
+		return lower, true
+	}
+	return "ALL", false
+}
+
+// CanonicalPeriod returns the normalized period, falling back to ALL.
+func CanonicalPeriod(period string) string {
+	canonical, _ := NormalizePeriod(period)
+	return canonical
+}
+
+// PeriodSince returns the lookback boundary for a period. A zero time means
+// all-time (no lower bound).
+func PeriodSince(now time.Time, period string) time.Time {
+	duration, ok := periodDurations[CanonicalPeriod(period)]
+	if !ok {
+		return time.Time{}
+	}
+	return now.Add(-duration)
+}
+
 // BuildStats constructs the dashboard stats response used by both the HTTP API
 // and the Wails desktop binding.
-func BuildStats(database *db.DB, calc *calculator.Calculator, deviceID string, source string, isPaused bool) (*model.StatsResponse, error) {
+func BuildStats(database *db.DB, calc *calculator.Calculator, deviceID string, source string, period string, isPaused bool) (*model.StatsResponse, error) {
 	now := time.Now().UTC()
 
 	deviceID = normalizeDeviceID(deviceID)
+	period = CanonicalPeriod(period)
+	since := PeriodSince(now, period)
 
 	periods, err := buildPeriodCosts(database, now, deviceID, source)
 	if err != nil {
 		return nil, err
 	}
 
-	charts, err := buildCharts(database, now, deviceID, source)
+	charts, err := buildCharts(database, now, deviceID, source, period)
 	if err != nil {
 		return nil, err
 	}
 
-	stats, err := database.QueryStatsSince(time.Time{}, deviceID, source)
+	stats, err := database.QueryStatsSince(since, deviceID, source)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +86,7 @@ func BuildStats(database *db.DB, calc *calculator.Calculator, deviceID string, s
 		return nil, err
 	}
 
-	projects, err := database.QueryProjectStatsSince(time.Time{}, deviceID, source)
+	projects, err := database.QueryProjectStatsSince(since, deviceID, source)
 	if err != nil {
 		return nil, err
 	}
@@ -52,21 +101,23 @@ func BuildStats(database *db.DB, calc *calculator.Calculator, deviceID string, s
 	}, nil
 }
 
-func BuildStatsSummary(database *db.DB, _ *calculator.Calculator, deviceID string, source string, isPaused bool) (*model.StatsResponse, error) {
+func BuildStatsSummary(database *db.DB, _ *calculator.Calculator, deviceID string, source string, period string, isPaused bool) (*model.StatsResponse, error) {
 	now := time.Now().UTC()
 	deviceID = normalizeDeviceID(deviceID)
+	period = CanonicalPeriod(period)
+	since := PeriodSince(now, period)
 
 	periods, err := buildPeriodCosts(database, now, deviceID, source)
 	if err != nil {
 		return nil, err
 	}
 
-	charts, err := buildCharts(database, now, deviceID, source)
+	charts, err := buildCharts(database, now, deviceID, source, period)
 	if err != nil {
 		return nil, err
 	}
 
-	stats, err := database.QuerySourceTotalsSince(time.Time{}, deviceID, source)
+	stats, err := database.QuerySourceTotalsSince(since, deviceID, source)
 	if err != nil {
 		return nil, err
 	}
@@ -101,16 +152,18 @@ func BuildStatsSummary(database *db.DB, _ *calculator.Calculator, deviceID strin
 	}, nil
 }
 
-func BuildStatsDetails(database *db.DB, calc *calculator.Calculator, deviceID string, source string, isPaused bool) (*model.StatsResponse, error) {
+func BuildStatsDetails(database *db.DB, calc *calculator.Calculator, deviceID string, source string, period string, isPaused bool) (*model.StatsResponse, error) {
 	deviceID = normalizeDeviceID(deviceID)
+	period = CanonicalPeriod(period)
+	since := PeriodSince(time.Now().UTC(), period)
 
-	stats, err := database.QueryStatsSince(time.Time{}, deviceID, source)
+	stats, err := database.QueryStatsSince(since, deviceID, source)
 	if err != nil {
 		return nil, err
 	}
 	sources := buildSourcesFromModelStats(stats, calc)
 
-	projects, err := database.QueryProjectStatsSince(time.Time{}, deviceID, source)
+	projects, err := database.QueryProjectStatsSince(since, deviceID, source)
 	if err != nil {
 		return nil, err
 	}
@@ -171,49 +224,173 @@ func buildPeriodCosts(database *db.DB, now time.Time, deviceID string, source st
 	return periods, nil
 }
 
-func buildCharts(database *db.DB, now time.Time, deviceID string, source string) (model.StatsCharts, error) {
+func buildCharts(database *db.DB, now time.Time, deviceID string, source string, period string) (model.StatsCharts, error) {
+	granularity, start, end, count := chartWindow(now, period)
+
+	costBuckets, err := database.QueryDailyCostBuckets(start, end, granularity, deviceID, source)
+	if err != nil {
+		return model.StatsCharts{}, err
+	}
+
+	// The calendar heatmap and source-share donut keep their fixed 30-day
+	// window; they are activity overviews rather than window-scoped trends.
 	const chartDays = 30
+	today := startOfDay(now)
+	heatmapStart := today.AddDate(0, 0, -(chartDays - 1))
+	heatmapEnd := heatmapStart.AddDate(0, 0, chartDays)
 
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	start := today.AddDate(0, 0, -(chartDays - 1))
-	end := start.AddDate(0, 0, chartDays)
-
-	dailyCosts, err := database.QueryDailyCostBuckets(start, end, deviceID, source)
+	heatmap, err := database.QueryCalendarHeatmapBuckets(heatmapStart, heatmapEnd, deviceID, source)
 	if err != nil {
 		return model.StatsCharts{}, err
 	}
-	heatmap, err := database.QueryCalendarHeatmapBuckets(start, end, deviceID, source)
-	if err != nil {
-		return model.StatsCharts{}, err
-	}
-	toolShare, err := database.QueryToolShareBuckets(start, end, deviceID, "")
+	toolShare, err := database.QueryToolShareBuckets(heatmapStart, heatmapEnd, deviceID, "")
 	if err != nil {
 		return model.StatsCharts{}, err
 	}
 
 	return model.StatsCharts{
-		DailyCosts:      fillDailyCosts(start, chartDays, dailyCosts),
-		CalendarHeatmap: fillCalendarHeatmap(start, chartDays, heatmap),
+		Granularity:     granularity,
+		DailyCosts:      fillCostBuckets(granularity, start, end, count, costBuckets),
+		CalendarHeatmap: fillCalendarHeatmap(heatmapStart, chartDays, heatmap),
 		ToolShare:       toolShare,
 	}, nil
 }
 
-func fillDailyCosts(start time.Time, days int, buckets []model.DailyCostBucket) []model.DailyCostBucket {
+// chartWindow resolves the bucket granularity and range for a period. count is
+// the number of buckets to emit; zero means "derive from the earliest record"
+// (all-time).
+func chartWindow(now time.Time, period string) (granularity string, start time.Time, end time.Time, count int) {
+	switch CanonicalPeriod(period) {
+	case "1h":
+		granularity = db.BucketHourly
+		end = now.Truncate(time.Hour).Add(time.Hour)
+		// Two hourly buckets so the current (partial) hour is shown alongside
+		// the previous hour rather than a single misleading partial bar.
+		count = 2
+	case "24h":
+		granularity = db.BucketHourly
+		end = now.Truncate(time.Hour).Add(time.Hour)
+		count = 24
+	case "7d":
+		granularity = db.BucketDaily
+		end = startOfDay(now).AddDate(0, 0, 1)
+		count = 7
+	case "30d":
+		granularity = db.BucketDaily
+		end = startOfDay(now).AddDate(0, 0, 1)
+		count = 30
+	case "3mo":
+		granularity = db.BucketDaily
+		end = startOfDay(now).AddDate(0, 0, 1)
+		count = 90
+	case "6mo":
+		granularity = db.BucketMonthly
+		end = startOfMonth(now).AddDate(0, 1, 0)
+		count = 6
+	case "1y":
+		granularity = db.BucketMonthly
+		end = startOfMonth(now).AddDate(0, 1, 0)
+		count = 12
+	default:
+		granularity = db.BucketMonthly
+		end = startOfMonth(now).AddDate(0, 1, 0)
+		count = 0
+	}
+
+	if count > 0 {
+		start = advanceBucket(granularity, end, -count)
+	}
+	return granularity, start, end, count
+}
+
+func fillCostBuckets(granularity string, start time.Time, end time.Time, count int, buckets []model.DailyCostBucket) []model.DailyCostBucket {
 	byDate := make(map[string]model.DailyCostBucket, len(buckets))
 	for _, bucket := range buckets {
 		byDate[bucket.Date] = bucket
 	}
 
-	filled := make([]model.DailyCostBucket, 0, days)
-	for offset := 0; offset < days; offset++ {
-		date := start.AddDate(0, 0, offset).Format("2006-01-02")
-		bucket, ok := byDate[date]
+	if count == 0 {
+		if len(buckets) == 0 {
+			return []model.DailyCostBucket{}
+		}
+		start = parseBucketStart(granularity, buckets[0].Date)
+		if start.IsZero() {
+			return buckets
+		}
+	}
+
+	filled := make([]model.DailyCostBucket, 0, max(count, 1))
+	for cursor := start; cursor.Before(end); cursor = nextBucketStart(granularity, cursor) {
+		key := formatBucketKey(granularity, cursor)
+		bucket, ok := byDate[key]
 		if !ok {
-			bucket = model.DailyCostBucket{Date: date}
+			bucket = model.DailyCostBucket{Date: key}
 		}
 		filled = append(filled, bucket)
+		if count > 0 && len(filled) >= count {
+			break
+		}
 	}
 	return filled
+}
+
+func startOfDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func startOfMonth(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
+func nextBucketStart(granularity string, t time.Time) time.Time {
+	switch granularity {
+	case db.BucketHourly:
+		return t.Add(time.Hour)
+	case db.BucketMonthly:
+		return t.AddDate(0, 1, 0)
+	default:
+		return t.AddDate(0, 0, 1)
+	}
+}
+
+// advanceBucket moves t by n buckets (n may be negative).
+func advanceBucket(granularity string, t time.Time, n int) time.Time {
+	switch granularity {
+	case db.BucketHourly:
+		return t.Add(time.Duration(n) * time.Hour)
+	case db.BucketMonthly:
+		return t.AddDate(0, n, 0)
+	default:
+		return t.AddDate(0, 0, n)
+	}
+}
+
+func formatBucketKey(granularity string, t time.Time) string {
+	switch granularity {
+	case db.BucketHourly:
+		return t.Format("2006-01-02 15:00")
+	case db.BucketMonthly:
+		return t.Format("2006-01")
+	default:
+		return t.Format("2006-01-02")
+	}
+}
+
+func parseBucketStart(granularity string, value string) time.Time {
+	var layout string
+	switch granularity {
+	case db.BucketHourly:
+		layout = "2006-01-02 15:00"
+	case db.BucketMonthly:
+		layout = "2006-01"
+	default:
+		layout = "2006-01-02"
+	}
+	t, err := time.Parse(layout, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return t.UTC()
 }
 
 func fillCalendarHeatmap(start time.Time, days int, buckets []model.CalendarHeatmapBucket) []model.CalendarHeatmapBucket {

@@ -272,17 +272,17 @@ func TestQueryCostIntelligenceBuckets(t *testing.T) {
 		}
 	}
 
-	dailyCosts, err := database.QueryDailyCostBuckets(start, end, "dev1", "Codex")
+	dailyCosts, err := database.QueryDailyCostBuckets(start, end, db.BucketDaily, "dev1", "Codex")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(dailyCosts) != 2 {
 		t.Fatalf("expected two non-empty Codex daily buckets, got %+v", dailyCosts)
 	}
-	if dailyCosts[0].Date != "2026-05-10" || dailyCosts[0].Cost != 1.00 {
+	if dailyCosts[0].Date != "2026-05-10" || dailyCosts[0].Cost != 1.00 || dailyCosts[0].Tokens != 110 {
 		t.Fatalf("unexpected first daily cost bucket: %+v", dailyCosts[0])
 	}
-	if dailyCosts[1].Date != "2026-06-08" || dailyCosts[1].Cost != 2.00 {
+	if dailyCosts[1].Date != "2026-06-08" || dailyCosts[1].Cost != 2.00 || dailyCosts[1].Tokens != 220 {
 		t.Fatalf("unexpected second daily cost bucket: %+v", dailyCosts[1])
 	}
 

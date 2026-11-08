@@ -97,6 +97,7 @@ test('dashboard shows cost intelligence charts', async ({ page }) => {
   const dailyCosts = Array.from({ length: 30 }, (_, index) => ({
     date: dateAt(index),
     cost: index === 28 ? 2.5 : index === 29 ? 12.34 : 0,
+    tokens: index === 28 ? 550 : index === 29 ? 1050 : 0,
   }));
   const calendarHeatmap = Array.from({ length: 30 }, (_, index) => ({
     date: dateAt(index),
@@ -109,6 +110,7 @@ test('dashboard shows cost intelligence charts', async ({ page }) => {
     await fulfillJSON(route, {
       ...emptyStatsPayload,
       charts: {
+        granularity: 'daily',
         daily_costs: dailyCosts,
         calendar_heatmap: calendarHeatmap,
         tool_share: [
@@ -123,7 +125,7 @@ test('dashboard shows cost intelligence charts', async ({ page }) => {
 
   await page.goto('/');
 
-  await expect(page.getByText('近 30 天每日成本')).toBeVisible();
+  await expect(page.getByText('成本与用量趋势')).toBeVisible();
   await expect(page.getByText('每日活跃热力矩阵')).toBeVisible();
   await expect(page.getByText('CLI 工具占比与分布')).toBeVisible();
   await expect(page.getByTestId('daily-cost-bar')).toHaveCount(30);
@@ -132,6 +134,11 @@ test('dashboard shows cost intelligence charts', async ({ page }) => {
   await expect(page.getByTestId('heatmap-cell')).toHaveCount(30);
   await expect(page.getByText('$12.34').first()).toBeVisible();
   await expect(page.getByText('Codex', { exact: true }).first()).toBeVisible();
+
+  // Trend chart metric toggle switches bars from cost to token volume.
+  await page.getByRole('button', { name: 'TOKEN', exact: true }).click();
+  await expect(page.getByTestId('daily-cost-bar').last()).toHaveAttribute('data-tokens', '1050');
+  await expect(page.getByText('1.1K').first()).toBeVisible();
 
   await page.getByRole('button', { name: '按 Token' }).click();
   await expect(page.getByText('65.6%')).toBeVisible();

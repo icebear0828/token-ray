@@ -156,7 +156,7 @@ func TestAPIStatsDetailModes(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	summaryResp, err := http.Get(srv.URL + "/api/stats?device=all&source=Codex&detail=summary")
+	summaryResp, err := http.Get(srv.URL + "/api/stats?device=all&source=Codex&detail=summary&period=30d")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestAPIStatsDetailModes(t *testing.T) {
 		t.Fatalf("summary should include Codex token-share chart data, got %+v", summary.Charts.ToolShare)
 	}
 
-	detailsResp, err := http.Get(srv.URL + "/api/stats?device=all&source=Codex&detail=details")
+	detailsResp, err := http.Get(srv.URL + "/api/stats?device=all&source=Codex&detail=details&period=30d")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,6 +212,67 @@ func TestAPIStatsDetailModes(t *testing.T) {
 		t.Fatalf("expected invalid detail 400, got %d", badResp.StatusCode)
 	}
 }
+func TestAPIStatsPeriodFilterAndGranularity(t *testing.T) {
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+
+	now := time.Now().UTC()
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{Source: "Codex", Model: "gpt-5.5", Project: "recent", InputTokens: 1000, OutputTokens: 100},
+		1.00, now.Add(-1*time.Hour), "/recent.sqlite", "local",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{Source: "Codex", Model: "gpt-5.5", Project: "old", InputTokens: 5000, OutputTokens: 500},
+		5.00, now.AddDate(0, 0, -40), "/old.sqlite", "local",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := web.NewHandler(database, calc, nil, nil, "", emptyFS)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	detailsResp, err := http.Get(srv.URL + "/api/stats?detail=details&period=7d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detailsResp.Body.Close()
+	var details model.StatsResponse
+	if err := json.NewDecoder(detailsResp.Body).Decode(&details); err != nil {
+		t.Fatal(err)
+	}
+	if len(details.Projects) != 1 || details.Projects[0].Project != "recent" {
+		t.Fatalf("period=7d should exclude the 40-day-old project, got %+v", details.Projects)
+	}
+
+	summaryResp, err := http.Get(srv.URL + "/api/stats?detail=summary&period=24h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer summaryResp.Body.Close()
+	var summary model.StatsResponse
+	if err := json.NewDecoder(summaryResp.Body).Decode(&summary); err != nil {
+		t.Fatal(err)
+	}
+	if summary.Charts.Granularity != "hourly" {
+		t.Fatalf("expected hourly granularity for 24h, got %q", summary.Charts.Granularity)
+	}
+	if len(summary.Charts.DailyCosts) != 24 {
+		t.Fatalf("expected 24 hourly buckets for 24h, got %d", len(summary.Charts.DailyCosts))
+	}
+
+	badResp, err := http.Get(srv.URL + "/api/stats?period=banana")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer badResp.Body.Close()
+	if badResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected invalid period 400, got %d", badResp.StatusCode)
+	}
+}
+
 func TestAPICacheSavings(t *testing.T) {
 	database, calc := testutil.NewTestDBAndCalc(t)
 	defer database.Close()
