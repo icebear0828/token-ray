@@ -40,7 +40,14 @@ import {
   formatPercent,
 } from "./utils/formatters";
 
-const DEFAULT_SOURCES = ["Claude Code", "Gemini CLI", "Codex", "Antigravity"];
+const DEFAULT_SOURCES = [
+  "Claude Code",
+  "Gemini CLI",
+  "Codex",
+  "Antigravity",
+  "DeepSeek Harness",
+  "Pi Agent",
+];
 
 export function App() {
   const { t, i18n } = useTranslation();

@@ -131,6 +131,24 @@ const KNOWN_SOURCE_THEMES: Record<string, SourceVisualTheme> = {
     dotClass: "bg-[#7C3AED]",
     shortCode: "AGV",
   },
+  "DeepSeek Harness": {
+    id: "DeepSeek Harness",
+    color: "#4D6BFE",
+    bgTint: "bg-[#EEF2FF]",
+    textClass: "text-[#4338CA]",
+    borderClass: "border-[#C7D2FE]",
+    dotClass: "bg-[#4D6BFE]",
+    shortCode: "DSH",
+  },
+  "Pi Agent": {
+    id: "Pi Agent",
+    color: "#0F766E",
+    bgTint: "bg-teal-50",
+    textClass: "text-teal-700",
+    borderClass: "border-teal-200",
+    dotClass: "bg-teal-700",
+    shortCode: "PI",
+  },
 };
 
 const FALLBACK_THEMES: SourceVisualTheme[] = [

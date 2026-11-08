@@ -1,19 +1,19 @@
 # AI Flight Dashboard
 
-> Local-first AI token, cost, and device usage dashboard for Claude Code, Gemini CLI, Codex, and Antigravity CLI.
+> Local-first AI token, cost, and device usage dashboard for Claude Code, Gemini CLI, Codex, Antigravity CLI, DeepSeek Harness, and Pi Agent.
 
 [中文](README.md)
 
 AI Flight Dashboard is a Go + React + Wails app. It passively reads local AI CLI logs and databases to track tokens, cache hits, model costs, project attribution, and multi-device usage. It starts as a native desktop GUI by default, and can also run as a Web dashboard, legacy TUI, or remote forwarder.
 
-It does not require patching Claude Code, Gemini CLI, Codex, or Antigravity CLI, and it does not proxy real API traffic. Data is stored locally in SQLite under `~/.ai-flight-dashboard` by default. LAN mode can discover, sync, and deduplicate usage across nearby machines.
+It does not require patching Claude Code, Gemini CLI, Codex, Antigravity CLI, DeepSeek Harness, or Pi Agent, and it does not proxy real API traffic. Data is stored locally in SQLite under `~/.ai-flight-dashboard` by default. LAN mode can discover, sync, and deduplicate usage across nearby machines.
 
 ## Capabilities
 
-- Supports Claude Code, Gemini CLI, Codex, and Antigravity CLI.
+- Supports Claude Code, Gemini CLI, Codex, Antigravity CLI, DeepSeek Harness, and Pi Agent.
 - Defaults to a Wails desktop GUI; also supports Web, legacy TUI, and forwarder modes.
 - Tracks 1h, 24h, 7d, 30d, 3mo, 6mo, 1y, and ALL windows.
-- Switches stats by TOTAL, CLAUDE, GEMINI, CODEX, and ANTIGRAVITY sources.
+- Switches stats by TOTAL, CLAUDE, GEMINI, CODEX, ANTIGRAVITY, DSH, and PI sources.
 - Shows project, model, device, token, cache read, cache creation, output, and cost metrics.
 - Shows cache hit rate as `cached_tokens / input_tokens * 100`.
 - Collapsible project and model tables for long-running datasets.
@@ -68,6 +68,8 @@ See [usage.md](usage.md) for more deployment details.
 | Gemini CLI | `~/.gemini/tmp/**/*.jsonl` | Supports streaming logs, `.project_root` attribution, and incremental offsets. |
 | Codex | `~/.codex/sessions/**/*.jsonl`, `~/.codex/logs_2.sqlite`, `~/.codex/state_5.sqlite` | Prefers accumulated token usage from session JSONL, falls back to telemetry SQLite, and uses state data for project paths. |
 | Antigravity CLI | `/statusline` JSON stdin | Reads the current statusline payload and records live tokens, cache tokens, model, and project attribution. |
+| DeepSeek Harness (dsh) | `$DSH_HOME/sessions/**/session[.vN].jsonl[.zstd]` (default `~/.dsh`) | Parses dsh session records with zstd, fork/seed dedup, and project attribution. |
+| Pi Agent | `$PI_CODING_AGENT_DIR/sessions/**/*.jsonl` (default `~/.pi/agent`) | Parses Pi session JSONL and aggregates billed assistant, tool, and compaction usage. |
 
 The default sync mode is `poll`: the app scans history on startup, then quickly polls known files and periodically discovers new files. `--sync-mode fsnotify` and `--sync-mode once` are also available.
 

@@ -170,6 +170,9 @@ func (s *Scanner) scanFile(path string, processPartialEOF bool) (int, error) {
 	uuidMap := make(map[string]entry) // uuid -> last entry
 	var noUUID []entry                // entries without uuid
 
+	if fileParser, ok := s.parser.(source.FileLineParser); ok {
+		fileParser.ResetFile(path, offset)
+	}
 	currentProject := s.parser.ProjectFromPath(path)
 
 	reader := bufio.NewReader(file)

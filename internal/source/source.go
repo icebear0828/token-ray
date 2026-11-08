@@ -63,3 +63,21 @@ type LineParser interface {
 	ProjectFromPath(path string) string
 	FallbackUUID(deviceID, path string, lineStartOffset int64, u model.TokenUsage) string
 }
+
+// FileLineParser is implemented by line parsers that keep state across the
+// lines of one file (for example, a model learned from an earlier record).
+// The scanner calls ResetFile before reading a file, passing the offset it is
+// about to resume from, so parsers can restore per-file state after a restart
+// without leaking it between files. Scans are serialized per source, so the
+// parser does not need to guard this state for concurrent scans.
+type FileLineParser interface {
+	LineParser
+	ResetFile(path string, offset int64)
+}
+
+// UsageIndex is implemented by sinks that can report the usage already stored
+// for a file, keyed by UUID. Sources can use it to avoid re-emitting unchanged
+// historical records when a transcript is re-read after an append.
+type UsageIndex interface {
+	KnownUsageByFile(filePath string) (map[string]model.TokenUsage, error)
+}

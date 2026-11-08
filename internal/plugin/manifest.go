@@ -18,10 +18,12 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 // reservedSources keeps plugins from silently merging their data into a
 // built-in source's statistics.
 var reservedSources = map[string]bool{
-	"Claude Code": true,
-	"Gemini CLI":  true,
-	"Codex":       true,
-	"Antigravity": true,
+	"Claude Code":      true,
+	"Gemini CLI":       true,
+	"Codex":            true,
+	"Antigravity":      true,
+	"DeepSeek Harness": true,
+	"Pi Agent":         true,
 }
 
 var reservedIDs = map[string]bool{
@@ -30,6 +32,8 @@ var reservedIDs = map[string]bool{
 	"codex":       true,
 	"antigravity": true,
 	"extra-jsonl": true,
+	"dsh":         true,
+	"pi-agent":    true,
 }
 
 // Manifest is the declarative description of a source plugin. It contains no

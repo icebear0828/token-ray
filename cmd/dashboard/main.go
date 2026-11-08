@@ -274,6 +274,8 @@ func main() {
 	registry.Register(sources.NewExtraDirsSource())
 	registry.Register(sources.NewCodexSource())
 	registry.Register(sources.NewAntigravitySource())
+	registry.Register(sources.NewDSHSource(home))
+	registry.Register(sources.NewPiSource(home))
 
 	pluginManager := plugin.NewManager(config.GetDataDir(), updater.CurrentVersion, func(id string) bool {
 		cfg, err := config.LoadConfig()
