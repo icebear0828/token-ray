@@ -1,8 +1,10 @@
 package main
 
 import (
-	"ai-flight-dashboard/internal/desktop"
+	goruntime "runtime"
 	"testing"
+
+	"ai-flight-dashboard/internal/desktop"
 
 	"github.com/wailsapp/wails/v2/pkg/options"
 )
@@ -13,8 +15,9 @@ func TestConfigureGUIWindowLifecycleHidesWindowOnClose(t *testing.T) {
 
 	configureGUIWindowLifecycle(appOptions, app)
 
-	if !appOptions.HideWindowOnClose {
-		t.Fatal("expected GUI close button to hide the window instead of quitting")
+	expected := goruntime.GOOS != "linux"
+	if appOptions.HideWindowOnClose != expected {
+		t.Fatalf("expected HideWindowOnClose=%v on %s", expected, goruntime.GOOS)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"ai-flight-dashboard/internal/codexusage"
 	"ai-flight-dashboard/internal/db"
 	"ai-flight-dashboard/internal/scanner"
+	"ai-flight-dashboard/internal/source"
 	"ai-flight-dashboard/internal/watcher"
 	"bufio"
 	"fmt"
@@ -46,19 +47,20 @@ func runRepairHistory(database *db.DB, calc *calculator.Calculator, deviceID str
 		log.Fatalf("Failed to reset Codex offset: %v", err)
 	}
 
-	s := scanner.New(database, calc, deviceID)
-	scanned, err := s.ScanAllStrict(scanDirs, nil)
+	sink := source.NewDBSink(database, calc, deviceID, nil)
+	s := scanner.New(sink)
+	scanned, err := s.ScanAllStrict(scanDirs)
 	if err != nil {
 		log.Fatalf("History repair scan failed: %v", err)
 	}
-	codexScanner := codexusage.New(database, calc, deviceID)
-	codexScanned, err := codexScanner.Scan(nil)
+	codexScanner := codexusage.New(sink)
+	codexScanned, err := codexScanner.Scan()
 	if err != nil {
 		log.Fatalf("Codex repair scan failed: %v", err)
 	}
 
-	agyScanner := agyscanner.New(database, calc, deviceID)
-	agyScanned, err := agyScanner.Backfill(nil)
+	agyScanner := agyscanner.New(sink)
+	agyScanned, err := agyScanner.Backfill()
 	if err != nil {
 		log.Printf("Antigravity backfill warning: %v", err)
 	}

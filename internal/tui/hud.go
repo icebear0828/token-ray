@@ -35,18 +35,16 @@ type Model struct {
 	budgetStatus *alert.BudgetStatus
 	quitting   bool
 	eventCount int // total events seen (usages slice is capped)
-	skipDBWrite bool
 }
 
 const maxLiveEvents = 50 // keep last N events in memory for display
 
-func NewModel(c *calculator.Calculator, w *watcher.Watcher, d *db.DB, ba *alert.BudgetAlert, skipDBWrite bool) Model {
+func NewModel(c *calculator.Calculator, w *watcher.Watcher, d *db.DB, ba *alert.BudgetAlert) Model {
 	return Model{
 		calc:     c,
 		watch:    w,
 		database: d,
 		budget:   ba,
-		skipDBWrite: skipDBWrite,
 	}
 }
 
@@ -122,11 +120,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.eventCount++
 		cost, _ := m.calc.CalculateCost(u.Model, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens)
 		m.totalCost += cost
-
-		// Async DB write — don't block the render path
-		if m.database != nil && !m.skipDBWrite {
-			go m.database.InsertUsage(u, cost, m.watch.DeviceID)
-		}
 
 		return m, tea.Batch(m.waitForUsage(), m.refreshPeriods())
 	case periodsMsg:

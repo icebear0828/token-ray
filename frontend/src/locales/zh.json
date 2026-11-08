@@ -189,5 +189,29 @@
   "viewDetails": "查看详情",
   "platform": "运行平台",
   "unknown": "未知",
-  "noUpdateAsset": "当前平台暂无可用更新包。"
+  "noUpdateAsset": "当前平台暂无可用更新包。",
+  "plugins": {
+    "title": "来源插件",
+    "subtitle": "声明式插件包",
+    "open_btn": "插件",
+    "installed": "已安装插件",
+    "empty": "尚未安装插件。导入插件包即可新增来源。",
+    "install_file": "从文件安装",
+    "install_file_desc": "插件包是纯声明式清单，不包含可执行代码。请选择插件作者提供的 .zip 压缩包。",
+    "select_file": "请先选择一个插件 .zip 文件。",
+    "installed_toast": "{{name}} 安装成功。",
+    "installing": "安装中...",
+    "install": "安装",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "enable": "启用",
+    "disable": "禁用",
+    "remove": "移除",
+    "remove_confirm": "确认移除插件「{{name}}」？历史用量数据仍会保留在数据库中。",
+    "index": "插件索引",
+    "index_desc": "可选：配置一个插件索引 JSON，用于浏览和安装项目提供的插件。",
+    "index_url": "插件索引地址",
+    "load_index": "加载索引",
+    "index_empty": "插件索引为空。"
+  }
 }

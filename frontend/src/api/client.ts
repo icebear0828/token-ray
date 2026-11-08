@@ -4,12 +4,16 @@ import {
   DashboardData,
   DeviceSummary,
   HeatmapPoint,
+  InstalledPlugin,
   LANSelfResponse,
   LanPeer,
   ModelStats,
   PeriodStats,
+  PluginIndexEntry,
+  PluginManifest,
   PricingEntry,
   ProjectStat,
+  SourceDescriptor,
   SourceStats,
   TIME_WINDOWS,
   ToolSharePoint,
@@ -247,6 +251,8 @@ const normalizeConfig = (raw: unknown): AppConfig => {
     enable_lan: c.enable_lan === undefined ? true : Boolean(c.enable_lan),
     extra_peer_hosts: Array.isArray(c.extra_peer_hosts) ? c.extra_peer_hosts.map(String) : [],
     tailscale_discovery: c.tailscale_discovery === undefined ? true : Boolean(c.tailscale_discovery),
+    disabled_plugins: Array.isArray(c.disabled_plugins) ? c.disabled_plugins.map(String) : [],
+    plugin_index_url: str(c.plugin_index_url),
   };
 };
 
@@ -339,4 +345,102 @@ export function defaultPeriods(): PeriodStats[] {
     cost: 0,
     cache_hit_rate: 0,
   }));
+}
+
+const normalizeManifest = (raw: unknown): PluginManifest => {
+  const m = record(raw);
+  return {
+    schema_version: num(m.schema_version),
+    id: str(m.id),
+    name: str(m.name, str(m.id)),
+    source: str(m.source, str(m.name)),
+    label: str(m.label),
+    version: str(m.version),
+    min_app_version: str(m.min_app_version),
+    description: str(m.description),
+    author: str(m.author),
+    homepage: str(m.homepage),
+  };
+};
+
+const normalizeIndexEntry = (raw: unknown): PluginIndexEntry => {
+  const e = record(raw);
+  return {
+    id: str(e.id),
+    name: str(e.name, str(e.id)),
+    version: str(e.version),
+    description: str(e.description),
+    min_app_version: str(e.min_app_version),
+    download_url: str(e.download_url),
+    sha256: str(e.sha256),
+  };
+};
+
+export async function fetchSources(): Promise<SourceDescriptor[]> {
+  const res = await requestJson<unknown>("/api/sources");
+  if (!Array.isArray(res)) return [];
+  return res.map((raw) => {
+    const d = record(raw);
+    return {
+      id: str(d.id),
+      source: str(d.source),
+      label: str(d.label, str(d.source)),
+      description: str(d.description),
+      version: str(d.version),
+      builtin: Boolean(d.builtin),
+    };
+  });
+}
+
+export async function fetchPlugins(): Promise<InstalledPlugin[]> {
+  const res = await requestJson<unknown>("/api/plugins");
+  if (!Array.isArray(res)) return [];
+  return res.map((raw) => {
+    const p = record(raw);
+    return {
+      manifest: normalizeManifest(p.manifest),
+      path: str(p.path),
+      enabled: Boolean(p.enabled),
+    };
+  });
+}
+
+export async function installPluginZip(file: File): Promise<PluginManifest> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/plugins/install", { method: "POST", body: form });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}${body ? `: ${body}` : ""}`);
+  }
+  return normalizeManifest(await res.json());
+}
+
+export async function installPluginURL(url: string, sha256 = ""): Promise<PluginManifest> {
+  const res = await requestJson<unknown>("/api/plugins/install", {
+    method: "POST",
+    body: JSON.stringify({ url, sha256 }),
+  });
+  return normalizeManifest(res);
+}
+
+export async function fetchPluginIndex(): Promise<PluginIndexEntry[]> {
+  const res = await requestJson<unknown>("/api/plugins/index");
+  const rows = Array.isArray(res)
+    ? res
+    : Array.isArray(record(res).plugins)
+      ? (record(res).plugins as unknown[])
+      : [];
+  return rows.map(normalizeIndexEntry);
+}
+
+export async function removePlugin(id: string): Promise<void> {
+  await requestJson<unknown>(`/api/plugins/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function setPluginEnabled(id: string, enabled: boolean): Promise<void> {
+  await requestJson<unknown>(
+    `/api/plugins/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`,
+    { method: "POST" }
+  );
 }

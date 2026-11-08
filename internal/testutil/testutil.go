@@ -10,6 +10,7 @@ import (
 
 	"ai-flight-dashboard/internal/calculator"
 	"ai-flight-dashboard/internal/db"
+	"ai-flight-dashboard/internal/source"
 )
 
 // PricingJSON is a minimal pricing table covering the models used in tests.
@@ -84,4 +85,10 @@ func NewTestCalc(t *testing.T) *calculator.Calculator {
 func NewTestDBAndCalc(t *testing.T) (*db.DB, *calculator.Calculator) {
 	t.Helper()
 	return NewTestDB(t), NewTestCalc(t)
+}
+
+// NewTestSink creates a source.Sink backed by a test database and calculator.
+func NewTestSink(t *testing.T, database *db.DB, calc *calculator.Calculator, deviceID string) *source.DBSink {
+	t.Helper()
+	return source.NewDBSink(database, calc, deviceID, nil)
 }

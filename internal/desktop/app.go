@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"ai-flight-dashboard/internal/calculator"
@@ -24,6 +25,8 @@ type App struct {
 	database   *db.DB
 	calc       *calculator.Calculator
 	statsCache *dashboard.StatsCache
+	mu         sync.Mutex
+	pendingShow bool
 }
 
 // NewApp creates a new App with references to the shared backend services.
@@ -37,14 +40,22 @@ func NewApp(database *db.DB, calc *calculator.Calculator) *App {
 
 // Startup is called by Wails when the application starts.
 func (a *App) Startup(ctx context.Context) {
+	a.mu.Lock()
 	a.ctx = ctx
+	pending := a.pendingShow
+	a.pendingShow = false
+	a.mu.Unlock()
+	if pending {
+		a.ShowWindow()
+	}
 }
 
 // GetContext returns the Wails runtime context.
-// NOTE: Returns nil before Startup() is called by Wails. Menu callbacks that
-// use this are safe because Startup runs before the UI renders and menus
-// become clickable.
+// NOTE: Returns nil before Startup() is called by Wails. Menu and tray
+// callbacks can run before the window exists, so callers must handle nil.
 func (a *App) GetContext() context.Context {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return a.ctx
 }
 
@@ -139,13 +150,34 @@ func (a *App) GetPricing() ([]PricingEntry, error) {
 
 // MinimiseToTray hides the window (tray keeps running).
 func (a *App) MinimiseToTray() {
-	runtime.WindowHide(a.ctx)
+	if ctx := a.GetContext(); ctx != nil {
+		runtime.WindowHide(ctx)
+	}
 }
 
-// ShowWindow restores and focuses the window.
+// ShowWindow restores, unminimises, and focuses the dashboard window. If the
+// window is not ready yet (tray/second-instance callbacks can race startup),
+// the request is replayed once Startup runs.
 func (a *App) ShowWindow() {
-	runtime.WindowShow(a.ctx)
-	runtime.WindowSetAlwaysOnTop(a.ctx, false)
+	a.mu.Lock()
+	ctx := a.ctx
+	if ctx == nil {
+		a.pendingShow = true
+		a.mu.Unlock()
+		return
+	}
+	a.mu.Unlock()
+
+	runtime.WindowShow(ctx)
+	runtime.WindowUnminimise(ctx)
+	runtime.WindowSetAlwaysOnTop(ctx, false)
+}
+
+// Quit exits the application.
+func (a *App) Quit() {
+	if ctx := a.GetContext(); ctx != nil {
+		runtime.Quit(ctx)
+	}
 }
 
 // --- Config ---
@@ -164,9 +196,13 @@ func (a *App) SaveConfig(cfg *config.AppConfig) error {
 
 // OpenSystemLogs opens the logs directory in the native file explorer.
 func (a *App) OpenSystemLogs() {
+	ctx := a.GetContext()
+	if ctx == nil {
+		return
+	}
 	logPath := filepath.Join(config.GetDataDir(), "stats")
 	// Wails BrowserOpenURL can open local directories if prefixed with file://
-	runtime.BrowserOpenURL(a.ctx, "file://"+logPath)
+	runtime.BrowserOpenURL(ctx, "file://"+logPath)
 }
 
 // --- Updater ---

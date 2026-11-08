@@ -13,7 +13,7 @@ import (
 
 func openDB() (*db.DB, *applock.Lock) {
 	appDataDir := config.GetDataDir()
-	lock := acquireProcessLock(appDataDir)
+	lock := acquireProcessLock(appDataDir, false)
 	dbPath := filepath.Join(appDataDir, "stats", "usage.db")
 	os.MkdirAll(filepath.Dir(dbPath), 0755)
 	database, err := db.New(dbPath)
@@ -23,13 +23,17 @@ func openDB() (*db.DB, *applock.Lock) {
 	}
 	return database, lock
 }
-func acquireProcessLock(dataDir string) *applock.Lock {
+func acquireProcessLock(dataDir string, gui bool) *applock.Lock {
 	lockPath := filepath.Join(dataDir, "dashboard.lock")
 	lock, err := applock.TryAcquire(lockPath)
 	if err == nil {
 		return lock
 	}
 	if errors.Is(err, applock.ErrAlreadyLocked) {
+		if gui {
+			showAlreadyRunningMessage(dataDir)
+			os.Exit(0)
+		}
 		log.Fatalf("Another AI Flight Dashboard process is already using %s. Stop it before starting a second dashboard or running a repair/import/dedup command.", dataDir)
 	}
 	log.Fatalf("Failed to acquire process lock %s: %v", lockPath, err)

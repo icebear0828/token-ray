@@ -25,7 +25,7 @@ type codexEvent struct {
 	reasoning    int
 }
 
-func (s *Scanner) scanLogs(threads map[string]threadInfo, usageChan chan<- watcher.TokenUsage) (int, error) {
+func (s *Scanner) scanLogs(threads map[string]threadInfo) (int, error) {
 	if len(threads) == 0 || s.LogsPath == "" {
 		return 0, nil
 	}
@@ -33,7 +33,7 @@ func (s *Scanner) scanLogs(threads map[string]threadInfo, usageChan chan<- watch
 		return 0, nil
 	}
 
-	offset, err := s.db.GetOffset(OffsetKey)
+	offset, err := s.sink.Offset(OffsetKey)
 	if err != nil {
 		return 0, err
 	}
@@ -116,15 +116,11 @@ func (s *Scanner) scanLogs(threads map[string]threadInfo, usageChan chan<- watch
 			Timestamp:    event.ts,
 			UUID:         fmt.Sprintf("codex:%d", event.logID),
 		}
-		cost, _ := s.calc.CalculateCost(u.Model, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens)
-		if err := s.db.InsertUsageWithTime(u, cost, u.Timestamp, s.LogsPath, s.DeviceID); err != nil {
+		if err := s.sink.Emit(u, s.LogsPath); err != nil {
 			return count, err
 		}
 		if logID > maxOffset {
 			maxOffset = logID
-		}
-		if usageChan != nil {
-			usageChan <- u
 		}
 		count++
 	}
@@ -135,7 +131,7 @@ func (s *Scanner) scanLogs(threads map[string]threadInfo, usageChan chan<- watch
 		return count, err
 	}
 	if maxOffset > offset {
-		if err := s.db.SetOffset(OffsetKey, maxOffset); err != nil {
+		if err := s.sink.SetOffset(OffsetKey, maxOffset); err != nil {
 			return count, err
 		}
 	}

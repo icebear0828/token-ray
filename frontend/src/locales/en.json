@@ -189,5 +189,29 @@
   "viewDetails": "View Details",
   "platform": "Platform",
   "unknown": "Unknown",
-  "noUpdateAsset": "No matching update asset found for your platform."
+  "noUpdateAsset": "No matching update asset found for your platform.",
+  "plugins": {
+    "title": "Source Plugins",
+    "subtitle": "DECLARATIVE PACKAGES",
+    "open_btn": "Plugins",
+    "installed": "Installed Plugins",
+    "empty": "No plugins installed. Import a plugin package to add a new source.",
+    "install_file": "Install from file",
+    "install_file_desc": "Plugin packages are declarative manifests with no executable code. Select a .zip archive provided by the plugin author.",
+    "select_file": "Select a plugin .zip file first.",
+    "installed_toast": "{{name}} installed.",
+    "installing": "Installing...",
+    "install": "Install",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable",
+    "disable": "Disable",
+    "remove": "Remove",
+    "remove_confirm": "Remove plugin \"{{name}}\"? Historical usage data stays in the database.",
+    "index": "Plugin Index",
+    "index_desc": "Optionally point at a plugin index JSON to browse and install project-provided plugins.",
+    "index_url": "Plugin Index URL",
+    "load_index": "Load Index",
+    "index_empty": "The plugin index is empty."
+  }
 }
