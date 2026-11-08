@@ -171,6 +171,9 @@ func (s *Scanner) scanFile(path string, processPartialEOF bool) (int, error) {
 	var noUUID []entry                // entries without uuid
 
 	currentProject := s.parser.ProjectFromPath(path)
+	if fileParser, ok := s.parser.(source.FileLineParser); ok {
+		fileParser.ResetFile(path)
+	}
 
 	reader := bufio.NewReader(file)
 	newOffset := offset

@@ -63,3 +63,13 @@ type LineParser interface {
 	ProjectFromPath(path string) string
 	FallbackUUID(deviceID, path string, lineStartOffset int64, u model.TokenUsage) string
 }
+
+// FileLineParser is implemented by line parsers that keep state across the
+// lines of one file (for example, a model learned from an earlier record).
+// The scanner calls ResetFile before reading a file so state cannot leak
+// between files. Scans are serialized per source, so the parser does not need
+// to guard this state for concurrent scans.
+type FileLineParser interface {
+	LineParser
+	ResetFile(path string)
+}

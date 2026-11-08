@@ -11,6 +11,7 @@ import (
 	"ai-flight-dashboard/internal/agyscanner"
 	"ai-flight-dashboard/internal/codexusage"
 	"ai-flight-dashboard/internal/config"
+	"ai-flight-dashboard/internal/dsh"
 	"ai-flight-dashboard/internal/model"
 	"ai-flight-dashboard/internal/scanner"
 	"ai-flight-dashboard/internal/source"
@@ -205,4 +206,10 @@ func (s *antigravitySource) WatchDirs() []string { return nil }
 func (s *antigravitySource) Scan(ctx context.Context, sink source.Sink) error {
 	_, err := agyscanner.New(sink).Scan()
 	return err
+}
+
+// NewDSHSource watches DeepSeek Harness session transcripts, including the
+// zstd-compressed v3+ format.
+func NewDSHSource(home string) source.Source {
+	return dsh.New(home)
 }

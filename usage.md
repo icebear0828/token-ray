@@ -120,6 +120,8 @@ export AI_FLIGHT_DASHBOARD_DATA_DIR="$HOME/.ai-flight-dashboard"
 - Claude Code：监听 `~/.claude/projects/**/*.jsonl`
 - Gemini CLI：监听 `~/.gemini/tmp/**/*.jsonl`
 - Codex：从 `~/.codex/logs_2.sqlite` 读取 telemetry，并使用 `~/.codex/state_5.sqlite` 解析项目路径
+- DeepSeek Harness：监听 `$DSH_HOME/sessions/**/session[.vN].jsonl[.zstd]`（默认 `~/.dsh`），支持 zstd
+- Pi Agent：监听 `$PI_CODING_AGENT_DIR/sessions/**/*.jsonl`（默认 `~/.pi/agent`）
 
 GUI 设置页可以配置额外监听目录。新增或移除目录后保存配置，运行中的 watcher 会动态更新。
 
@@ -233,6 +235,8 @@ GET  /install.sh
 - `Gemini CLI`
 - `Codex`
 - `Antigravity`
+- `DeepSeek Harness`
+- `Pi Agent`
 
 需要认证的写接口使用 bearer token：
 

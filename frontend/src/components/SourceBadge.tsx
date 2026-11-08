@@ -63,6 +63,35 @@ export const SourceIcon: React.FC<SourceIconProps> = ({ source, className = "w-4
     );
   }
 
+  if (source === "DeepSeek Harness") {
+    return (
+      <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+        <rect width="20" height="20" rx="5" fill="#EEF2FF" />
+        <path
+          d="M4.2 12.8c1.5-4.1 3-4.1 4.5 0s3 4.1 4.5 0 2.9-3.6 2.6-1.1"
+          stroke="#4D6BFE"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
+        <circle cx="14.6" cy="6.1" r="1.2" fill="#4D6BFE" />
+      </svg>
+    );
+  }
+
+  if (source === "Pi Agent") {
+    return (
+      <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+        <rect width="20" height="20" rx="5" fill="#F0FDFA" />
+        <path
+          d="M5.4 7.1h9.2M8 7.1v6.8M12 7.1v6.8"
+          stroke="#0F766E"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+
   return (
     <span
       className={`inline-flex items-center justify-center rounded text-[9px] font-bold tracking-wider ${theme.bgTint} ${theme.textClass} ${className}`}

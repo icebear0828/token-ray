@@ -108,7 +108,7 @@ GET /api/stats?device={device_id}&source={source_name}&detail={full|summary|deta
 GET /api/stats?device={device_id}&source={source_name}&period={period}&detail={full|summary|details}
 ```
 
-`source_name` supports the same source names shown in the dashboard, including `Claude Code`, `Gemini CLI`, `Codex`, and `Antigravity`.
+`source_name` supports the same source names shown in the dashboard, including `Claude Code`, `Gemini CLI`, `Codex`, `Antigravity`, `DeepSeek Harness`, and `Pi Agent`.
 
 `period` is optional and defaults to `all`. It scopes model/project attribution (`sources` and `projects`) and the `charts.daily_costs` trend. The trend granularity adapts to the window: `1h`/`24h` use hourly buckets, `7d`/`30d`/`3mo` use daily buckets, and `6mo`/`1y`/`all` use monthly buckets. `charts.granularity` reports the bucket size used. `charts.calendar_heatmap` and `charts.tool_share` stay on a fixed 30-day window. An unrecognized `period` returns `400 Bad Request`.
 

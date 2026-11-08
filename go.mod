@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/energye/systray v1.0.3
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/klauspost/compress v1.20.3
 	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/minio/selfupdate v0.6.0
 	github.com/wailsapp/wails/v2 v2.12.0
