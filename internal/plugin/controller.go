@@ -173,7 +173,7 @@ func setPluginDisabled(id string, disabled bool) error {
 	if err != nil {
 		return err
 	}
-	out := cfg.DisabledPlugins[:0]
+	out := make([]string, 0, len(cfg.DisabledPlugins)+1)
 	for _, existing := range cfg.DisabledPlugins {
 		if existing != id {
 			out = append(out, existing)

@@ -418,9 +418,15 @@ func main() {
 		startDBDrain()
 
 		app := desktop.NewApp(database, calc)
-		tray := desktop.NewTray(app)
-		tray.Start()
-		defer tray.Stop()
+		// Linux status-notifier support varies by desktop environment. On
+		// Linux the window quits on close (see gui_lifecycle.go), so a tray is
+		// optional; avoid opening a DBus status-notifier connection when it
+		// would not be usable.
+		if goruntime.GOOS != "linux" {
+			tray := desktop.NewTray(app)
+			tray.Start()
+			defer tray.Stop()
+		}
 
 		// Build system tray / application menu
 		appMenu := menu.NewMenu()

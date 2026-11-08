@@ -54,6 +54,10 @@ func (s *Source) Descriptor() source.Descriptor {
 	}
 }
 
+// WatchDirs returns the manifest directories that currently exist. A plugin
+// directory created after the app starts is picked up by the periodic full
+// scan; fsnotify is attached when the plugin is enabled (or on restart), so
+// newly created directories rely on polling until then.
 func (s *Source) WatchDirs() []string { return existingDirs(s.dirs) }
 
 func (s *Source) Scan(ctx context.Context, sink source.Sink) error {
