@@ -83,6 +83,49 @@ func TestScanAll_IncrementalScan(t *testing.T) {
 	}
 }
 
+func TestScanKnownFilesUsesPreloadedOffsets(t *testing.T) {
+	database := testutil.NewTestDB(t)
+	calc := testutil.NewTestCalc(t)
+
+	logDir := t.TempDir()
+	logFile := filepath.Join(logDir, "session.jsonl")
+	ts := time.Now().UTC().Format(time.RFC3339Nano)
+	line := fmt.Sprintf(
+		`{"timestamp":"%s","message":{"model":"claude-opus-4-7","type":"message","role":"assistant","content":[],"usage":{"input_tokens":500,"cache_read_input_tokens":0,"output_tokens":100}}}`,
+		ts,
+	) + "\n"
+	if err := os.WriteFile(logFile, []byte(line), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := scanner.New(testutil.NewTestSink(t, database, calc, "local"))
+	if count, err := s.ScanAll([]string{logDir}); err != nil || count != 1 {
+		t.Fatalf("full scan: count=%d err=%v", count, err)
+	}
+
+	// Unchanged file: the known-file scan must read the offset from the
+	// preloaded map and skip the file.
+	if count, err := s.ScanKnownFiles([]string{logDir}); err != nil || count != 0 {
+		t.Fatalf("unchanged known-file scan: count=%d err=%v", count, err)
+	}
+
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(line); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if count, err := s.ScanKnownFiles([]string{logDir}); err != nil || count != 1 {
+		t.Fatalf("appended known-file scan: count=%d err=%v", count, err)
+	}
+}
+
 func TestScanAllStrictReturnsFileErrors(t *testing.T) {
 	database := testutil.NewTestDB(t)
 	calc := testutil.NewTestCalc(t)

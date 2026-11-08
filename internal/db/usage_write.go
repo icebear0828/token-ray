@@ -10,6 +10,13 @@ import (
 
 type UsageCostCalculator func(model string, inputTokens int, cachedTokens int, cacheCreationTokens int, outputTokens int) (float64, error)
 
+// sqlExecer is the subset of *sql.DB and *sql.Tx used by usage writes, so the
+// same statements can run either directly or inside a transaction.
+type sqlExecer interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
+}
+
 // InsertUsage inserts a usage record with current timestamp (for live watcher).
 func (d *DB) InsertUsage(u model.TokenUsage, cost float64, deviceID string) error {
 	ts := time.Now().UTC()
@@ -102,9 +109,16 @@ func (d *DB) RecalculateUsageCosts(calculate UsageCostCalculator) (int64, error)
 	return changed, nil
 }
 func (d *DB) insertUsageWithTime(u model.TokenUsage, cost float64, logTS time.Time, filePath string, deviceID string, superseded bool) error {
-	return d.insertUsageWithTimeUpdatedAt(u, cost, logTS, filePath, deviceID, time.Now().UTC(), superseded)
+	return insertUsageWithTimeExec(d.conn, u, cost, logTS, filePath, deviceID, superseded)
 }
 func (d *DB) insertUsageWithTimeUpdatedAt(u model.TokenUsage, cost float64, logTS time.Time, filePath string, deviceID string, updatedAtTS time.Time, superseded bool) error {
+	return insertUsageWithTimeUpdatedAtExec(d.conn, u, cost, logTS, filePath, deviceID, updatedAtTS, superseded)
+}
+
+func insertUsageWithTimeExec(e sqlExecer, u model.TokenUsage, cost float64, logTS time.Time, filePath string, deviceID string, superseded bool) error {
+	return insertUsageWithTimeUpdatedAtExec(e, u, cost, logTS, filePath, deviceID, time.Now().UTC(), superseded)
+}
+func insertUsageWithTimeUpdatedAtExec(e sqlExecer, u model.TokenUsage, cost float64, logTS time.Time, filePath string, deviceID string, updatedAtTS time.Time, superseded bool) error {
 	if updatedAtTS.IsZero() {
 		updatedAtTS = time.Now().UTC()
 	}
@@ -137,12 +151,12 @@ func (d *DB) insertUsageWithTimeUpdatedAt(u model.TokenUsage, cost float64, logT
 			superseded = excluded.superseded
 		WHERE julianday(excluded.updated_at) >= julianday(COALESCE(usage_records.updated_at, usage_records.timestamp, usage_records.log_timestamp))
 		`
-		_, err := d.conn.Exec(query, u.UUID, logTimestamp, updatedAt, u.Source, u.Model, u.Project, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens, cost, filePath, deviceID, supersededValue)
+		_, err := e.Exec(query, u.UUID, logTimestamp, updatedAt, u.Source, u.Model, u.Project, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens, cost, filePath, deviceID, supersededValue)
 		return err
 	}
 
 	if !superseded {
-		newerSuperseded, err := d.hasNewerSupersededLegacyRecord(u, logTimestamp, filePath, deviceID, updatedAt)
+		newerSuperseded, err := hasNewerSupersededLegacyRecordExec(e, u, logTimestamp, filePath, deviceID, updatedAt)
 		if err != nil {
 			return err
 		}
@@ -155,13 +169,13 @@ func (d *DB) insertUsageWithTimeUpdatedAt(u model.TokenUsage, cost float64, logT
 	INSERT OR IGNORE INTO usage_records (log_timestamp, updated_at, source, model, project, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, cost_usd, file_path, device_id, superseded)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := d.conn.Exec(query, logTimestamp, updatedAt, u.Source, u.Model, u.Project, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens, cost, filePath, deviceID, supersededValue)
+	_, err := e.Exec(query, logTimestamp, updatedAt, u.Source, u.Model, u.Project, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens, cost, filePath, deviceID, supersededValue)
 	return err
 }
 
-func (d *DB) hasNewerSupersededLegacyRecord(u model.TokenUsage, logTimestamp string, filePath string, deviceID string, updatedAt string) (bool, error) {
+func hasNewerSupersededLegacyRecordExec(e sqlExecer, u model.TokenUsage, logTimestamp string, filePath string, deviceID string, updatedAt string) (bool, error) {
 	var exists int
-	err := d.conn.QueryRow(`
+	err := e.QueryRow(`
 		SELECT 1
 		FROM usage_records
 		WHERE log_timestamp = ?

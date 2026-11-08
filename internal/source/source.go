@@ -81,3 +81,16 @@ type FileLineParser interface {
 type UsageIndex interface {
 	KnownUsageByFile(filePath string) (map[string]model.TokenUsage, error)
 }
+
+// OffsetIndex is implemented by sinks that can return every recorded offset at
+// once. Scanners use it to avoid issuing one query per known file.
+type OffsetIndex interface {
+	AllOffsets() (map[string]int64, error)
+}
+
+// TxRunner is implemented by sinks that can batch writes into one transaction.
+// The sink passed to fn is only valid inside the call; its notifications are
+// delivered after the transaction commits.
+type TxRunner interface {
+	RunInTx(fn func(Sink) error) error
+}
