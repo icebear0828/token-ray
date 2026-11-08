@@ -15,6 +15,7 @@ import { SourceBadge } from "./SourceBadge";
 interface AttributionTablesProps {
   sources: SourceStats[];
   projects?: ProjectStat[];
+  windowLabel: string;
   isHydratingDetails: boolean;
   currency: CurrencyCode;
 }
@@ -26,6 +27,7 @@ interface FlattenedModelRow extends ModelStats {
 export const AttributionTables: React.FC<AttributionTablesProps> = ({
   sources,
   projects,
+  windowLabel,
   isHydratingDetails,
   currency,
 }) => {
@@ -120,7 +122,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
             </h3>
           </div>
           <span className="font-mono-num rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-            {flattenedModels.length} MODELS
+            {windowLabel} · {flattenedModels.length} MODELS
           </span>
         </div>
 
@@ -268,7 +270,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
             </h3>
           </div>
           <span className="font-mono-num rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-            {filteredProjects.length} WORKSPACES
+            {windowLabel} · {filteredProjects.length} WORKSPACES
           </span>
         </div>
 

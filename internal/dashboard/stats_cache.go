@@ -10,6 +10,7 @@ import (
 type StatsCacheKey struct {
 	DeviceID string
 	Source   string
+	Period   string
 	Detail   string
 	IsPaused bool
 }
@@ -103,6 +104,7 @@ func cloneStatsResponse(stats *model.StatsResponse) *model.StatsResponse {
 	clone := *stats
 	clone.Periods = append([]model.PeriodCost(nil), stats.Periods...)
 	clone.Charts = model.StatsCharts{
+		Granularity:     stats.Charts.Granularity,
 		DailyCosts:      append([]model.DailyCostBucket(nil), stats.Charts.DailyCosts...),
 		CalendarHeatmap: append([]model.CalendarHeatmapBucket(nil), stats.Charts.CalendarHeatmap...),
 		ToolShare:       append([]model.ToolShareBucket(nil), stats.Charts.ToolShare...),

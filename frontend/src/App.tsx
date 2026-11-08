@@ -103,6 +103,7 @@ export function App() {
         const summaryRes = await fetchStats({
           device: selectedDevice,
           source: selectedSource,
+          period: selectedWindow,
           detail: "summary",
         });
         if (seq !== requestSeqRef.current) return;
@@ -126,6 +127,7 @@ export function App() {
         const detailsRes = await fetchStats({
           device: selectedDevice,
           source: selectedSource,
+          period: selectedWindow,
           detail: "details",
         });
         if (seq !== requestSeqRef.current) return;
@@ -148,7 +150,7 @@ export function App() {
         setIsHydratingDetails(false);
       }
     },
-    [selectedDevice, selectedSource]
+    [selectedDevice, selectedSource, selectedWindow]
   );
 
   // Initial & filter-change two-stage load
@@ -761,12 +763,14 @@ export function App() {
         <TokenTaxonomyStrip period={currentPeriod} />
 
         {/* ===================================================================
-            5. VISUAL ANALYTICS CHARTS (30D DAILY COST + CLI SOURCE SHARE)
+            5. VISUAL ANALYTICS CHARTS (WINDOW-SCOPED TREND + CLI SOURCE SHARE)
            =================================================================== */}
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="lg:col-span-7">
             <DailyCostChart
               data={data?.charts?.daily_costs ?? []}
+              granularity={data?.charts?.granularity ?? "daily"}
+              period={selectedWindow}
               currency={currency}
             />
           </div>
@@ -795,6 +799,7 @@ export function App() {
         <AttributionTables
           sources={data?.sources ?? []}
           projects={data?.projects}
+          windowLabel={selectedWindow}
           isHydratingDetails={isHydratingDetails}
           currency={currency}
         />

@@ -59,9 +59,12 @@ export interface ProjectStat {
   cache_hit_rate: number;
 }
 
+export type BucketGranularity = "hourly" | "daily" | "monthly";
+
 export interface DailyCostPoint {
   date: string;
   cost: number;
+  tokens: number;
 }
 
 export interface HeatmapPoint {
@@ -86,6 +89,7 @@ export interface DeviceRef {
 export interface DashboardData {
   periods: PeriodStats[];
   charts: {
+    granularity: BucketGranularity;
     daily_costs: DailyCostPoint[];
     calendar_heatmap: HeatmapPoint[];
     tool_share: ToolSharePoint[];

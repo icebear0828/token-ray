@@ -34,7 +34,7 @@ func TestBuildStatsIncludesCacheHitRates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stats, err := dashboard.BuildStats(database, calc, "local", "Codex", false)
+	stats, err := dashboard.BuildStats(database, calc, "local", "Codex", "ALL", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestBuildStatsSummaryOmitsHeavyDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary, err := dashboard.BuildStatsSummary(database, calc, "local", "Codex", false)
+	summary, err := dashboard.BuildStatsSummary(database, calc, "local", "Codex", "ALL", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestBuildStatsSummaryIncludesCostIntelligenceCharts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary, err := dashboard.BuildStatsSummary(database, calc, "local", "Codex", false)
+	summary, err := dashboard.BuildStatsSummary(database, calc, "local", "Codex", "30d", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestBuildStatsDetailsOmitsSummaryData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	details, err := dashboard.BuildStatsDetails(database, calc, "local", "Codex", false)
+	details, err := dashboard.BuildStatsDetails(database, calc, "local", "Codex", "ALL", false)
 	if err != nil {
 		t.Fatal(err)
 	}

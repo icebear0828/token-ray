@@ -68,7 +68,7 @@ func (a *App) GetStats(deviceID string, source string) (*model.StatsResponse, er
 		Source:   source,
 		IsPaused: false,
 	}, func() (*model.StatsResponse, error) {
-		return dashboard.BuildStats(a.database, a.calc, deviceID, source, false)
+		return dashboard.BuildStats(a.database, a.calc, deviceID, source, "ALL", false)
 	})
 }
 

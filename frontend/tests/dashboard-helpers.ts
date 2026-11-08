@@ -11,6 +11,7 @@ export const periods = ['1h', '24h', '7d', '30d', '3mo', '6mo', '1y', 'ALL'].map
 }));
 
 export const emptyCharts = {
+  granularity: 'daily',
   daily_costs: [],
   calendar_heatmap: [],
   tool_share: [],

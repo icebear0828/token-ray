@@ -52,8 +52,9 @@ interface ProjectStat {
 }
 
 interface DailyCostBucket {
-  date: string
+  date: string // "2006-01-02 15:00" hourly, "2006-01-02" daily, "2006-01" monthly
   cost: number
+  tokens: number // input_tokens + output_tokens
 }
 
 interface CalendarHeatmapBucket {
@@ -71,6 +72,7 @@ interface ToolShareBucket {
 }
 
 interface StatsCharts {
+  granularity: "hourly" | "daily" | "monthly"
   daily_costs: DailyCostBucket[]
   calendar_heatmap: CalendarHeatmapBucket[]
   tool_share: ToolShareBucket[]
@@ -101,11 +103,14 @@ interface SystemLogsResponse {
 GET /api/stats
 GET /api/stats?device={device_id}
 GET /api/stats?source={source_name}
-GET /api/stats?device={device_id}&source={source_name}
+GET /api/stats?period={1h|24h|7d|30d|3mo|6mo|1y|all}
 GET /api/stats?device={device_id}&source={source_name}&detail={full|summary|details}
+GET /api/stats?device={device_id}&source={source_name}&period={period}&detail={full|summary|details}
 ```
 
 `source_name` supports the same source names shown in the dashboard, including `Claude Code`, `Gemini CLI`, `Codex`, and `Antigravity`.
+
+`period` is optional and defaults to `all`. It scopes model/project attribution (`sources` and `projects`) and the `charts.daily_costs` trend. The trend granularity adapts to the window: `1h`/`24h` use hourly buckets, `7d`/`30d`/`3mo` use daily buckets, and `6mo`/`1y`/`all` use monthly buckets. `charts.granularity` reports the bucket size used. `charts.calendar_heatmap` and `charts.tool_share` stay on a fixed 30-day window. An unrecognized `period` returns `400 Bad Request`.
 
 `detail` is optional. Omit it, or use `full`, to return the complete legacy payload plus chart aggregates. Use `summary` for a lightweight response containing periods, chart aggregates, source totals, devices, and pause state. Use `details` for model/project details that can be loaded after the summary.
 
@@ -124,8 +129,9 @@ Response:
     }
   ],
   "charts": {
+    "granularity": "daily",
     "daily_costs": [
-      { "date": "2026-06-08", "cost": 0.45 }
+      { "date": "2026-06-08", "cost": 0.45, "tokens": 17000 }
     ],
     "calendar_heatmap": [
       { "date": "2026-06-08", "tokens": 17000, "cost": 0.45, "events": 10 }
@@ -177,7 +183,7 @@ Response:
 
 `cache_hit_rate` is `cached_tokens / input_tokens * 100`, bounded to `0..100`.
 
-`charts.daily_costs` and `charts.calendar_heatmap` are fixed 30-day UTC calendar-day series in ascending date order. `charts.tool_share` is sorted by total tokens descending and uses `input_tokens + output_tokens` as the token total.
+`charts.daily_costs` is an ascending time series whose bucket size follows `charts.granularity` and the requested `period`. `charts.calendar_heatmap` is a fixed 30-day UTC calendar-day series. `charts.tool_share` is a fixed 30-day series sorted by total tokens descending and uses `input_tokens + output_tokens` as the token total.
 
 ### 2. LAN Runtime Status
 ```

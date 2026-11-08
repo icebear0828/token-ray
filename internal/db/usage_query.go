@@ -176,12 +176,20 @@ func (d *DB) QueryTokenSourceSummaries(since time.Time, deviceID string) ([]mode
 	return summaries, rows.Err()
 }
 
-// QueryDailyCostBuckets returns non-empty daily cost buckets in the given date window.
-func (d *DB) QueryDailyCostBuckets(startInclusive time.Time, endExclusive time.Time, deviceID string, source string) ([]model.DailyCostBucket, error) {
-	query := `SELECT date(log_timestamp), COALESCE(SUM(cost_usd), 0)
+// QueryDailyCostBuckets returns non-empty cost/token buckets in the given
+// window, grouped at the requested granularity. A zero start means no lower
+// bound (used by the all-time chart).
+func (d *DB) QueryDailyCostBuckets(startInclusive time.Time, endExclusive time.Time, granularity string, deviceID string, source string) ([]model.DailyCostBucket, error) {
+	bucketExpr := bucketExpression(granularity)
+	query := `SELECT ` + bucketExpr + `, COALESCE(SUM(cost_usd), 0), COALESCE(SUM(input_tokens + output_tokens), 0)
 		FROM usage_records
-		WHERE ` + activeUsagePredicate + ` AND julianday(log_timestamp) >= julianday(?) AND julianday(log_timestamp) < julianday(?)`
-	args := []interface{}{formatLogTimestamp(startInclusive), formatLogTimestamp(endExclusive)}
+		WHERE ` + activeUsagePredicate + ` AND julianday(log_timestamp) < julianday(?)`
+	args := []interface{}{formatLogTimestamp(endExclusive)}
+
+	if !startInclusive.IsZero() {
+		query += ` AND julianday(log_timestamp) >= julianday(?)`
+		args = append(args, formatLogTimestamp(startInclusive))
+	}
 
 	if deviceID != "" && deviceID != "all" {
 		query += " AND device_id = ?"
@@ -192,7 +200,7 @@ func (d *DB) QueryDailyCostBuckets(startInclusive time.Time, endExclusive time.T
 		args = append(args, source)
 	}
 
-	query += " GROUP BY date(log_timestamp) ORDER BY date(log_timestamp)"
+	query += " GROUP BY " + bucketExpr + " ORDER BY " + bucketExpr
 
 	rows, err := d.conn.Query(query, args...)
 	if err != nil {
@@ -203,12 +211,23 @@ func (d *DB) QueryDailyCostBuckets(startInclusive time.Time, endExclusive time.T
 	buckets := []model.DailyCostBucket{}
 	for rows.Next() {
 		var bucket model.DailyCostBucket
-		if err := rows.Scan(&bucket.Date, &bucket.Cost); err != nil {
+		if err := rows.Scan(&bucket.Date, &bucket.Cost, &bucket.Tokens); err != nil {
 			return nil, err
 		}
 		buckets = append(buckets, bucket)
 	}
 	return buckets, rows.Err()
+}
+
+func bucketExpression(granularity string) string {
+	switch granularity {
+	case BucketHourly:
+		return "strftime('%Y-%m-%d %H:00', log_timestamp)"
+	case BucketMonthly:
+		return "strftime('%Y-%m', log_timestamp)"
+	default:
+		return "date(log_timestamp)"
+	}
 }
 
 // QueryCalendarHeatmapBuckets returns non-empty daily token buckets for a calendar heatmap.
