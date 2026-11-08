@@ -12,6 +12,8 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"ai-flight-dashboard/internal/model"
+	"ai-flight-dashboard/internal/source"
 	"ai-flight-dashboard/internal/testutil"
 )
 
@@ -248,6 +250,96 @@ func TestSourceScansPlainIncrementally(t *testing.T) {
 	}
 	if len(stats) != 1 || stats[0].Events != 2 {
 		t.Fatalf("expected two unique rows after append, got %+v", stats)
+	}
+}
+
+func TestDshUUIDIgnoresUsageAndKeepsLast(t *testing.T) {
+	text := transcriptText(
+		headerLine,
+		`{"type":"assistant/message","seq":2,"time":1700000000000,"data":{"usage":{"inputTokens":100,"outputTokens":20},"message":{"id":"m1","source":{"model":"deepseek-v4-pro"}}}}`,
+		`{"type":"assistant/message","seq":2,"time":1700000000000,"data":{"usage":{"inputTokens":200,"outputTokens":40},"message":{"id":"m1","source":{"model":"deepseek-v4-pro"}}}}`,
+	)
+	usages, err := parseTranscript(strings.NewReader(text), "fallback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(usages) != 1 || usages[0].InputTokens != 200 || usages[0].OutputTokens != 40 {
+		t.Fatalf("expected the last occurrence to win, got %+v", usages)
+	}
+}
+
+func TestSourceSkipsUnchangedHistoricalRecords(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("DSH_HOME", root)
+	first := transcriptText(headerLine, usageOne)
+	file := writeSessionBytes(t, root, "proj", "s1", "session.jsonl", []byte(first))
+
+	database, calc := testutil.NewTestDBAndCalc(t)
+	var emitted []model.TokenUsage
+	sink := source.NewDBSink(database, calc, "local", func(u model.TokenUsage) {
+		emitted = append(emitted, u)
+	})
+	src := New("")
+
+	if err := src.Scan(context.Background(), sink); err != nil {
+		t.Fatal(err)
+	}
+	if len(emitted) != 1 {
+		t.Fatalf("first scan should emit one record, got %d", len(emitted))
+	}
+
+	if err := os.WriteFile(file, []byte(first+usageTwo+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	emitted = nil
+	if err := src.Scan(context.Background(), sink); err != nil {
+		t.Fatal(err)
+	}
+	if len(emitted) != 1 || emitted[0].InputTokens != 200 {
+		t.Fatalf("append should emit only the new record, got %+v", emitted)
+	}
+}
+
+func TestSourceScanCadence(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("DSH_HOME", root)
+	writeSessionBytes(t, root, "proj", "s1", "session.jsonl", []byte(transcriptText(headerLine, usageOne)))
+
+	database, calc := testutil.NewTestDBAndCalc(t)
+	sink := testutil.NewTestSink(t, database, calc, "local")
+	src := New("")
+	src.fullInterval = time.Hour
+
+	if err := src.Scan(context.Background(), sink); err != nil {
+		t.Fatal(err)
+	}
+
+	// A new session is not discovered until the full-scan interval elapses.
+	writeSessionBytes(t, root, "proj", "s2", "session.jsonl", []byte(transcriptText(
+		`{"type":"session","id":"s2","cwd":"/work/demo"}`,
+		usageTwo,
+	)))
+	if err := src.Scan(context.Background(), sink); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := database.QueryStatsSince(time.Time{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats) != 1 || stats[0].Events != 1 {
+		t.Fatalf("known-file scan must not discover a new session, got %+v", stats)
+	}
+
+	src.lastFull = time.Time{}
+	if err := src.Scan(context.Background(), sink); err != nil {
+		t.Fatal(err)
+	}
+	stats, err = database.QueryStatsSince(time.Time{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats) != 1 || stats[0].Events != 2 {
+		t.Fatalf("full scan should discover the new session, got %+v", stats)
 	}
 }
 

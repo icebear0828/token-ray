@@ -62,7 +62,6 @@ type dshUsageCandidate struct {
 	timeMs      int64
 	afterHeader bool
 	identity    string
-	provider    string
 	model       string
 	usage       *dshUsage
 }
@@ -156,7 +155,6 @@ func parseTranscript(reader io.Reader, fallbackSessionID string) ([]model.TokenU
 			timeMs:      record.Time,
 			afterHeader: seenHeader,
 			identity:    identity,
-			provider:    record.Data.Message.Source.Provider,
 			model:       modelName,
 			usage:       usage,
 		})
@@ -181,7 +179,7 @@ func parseTranscript(reader io.Reader, fallbackSessionID string) ([]model.TokenU
 		inheritedCut = lastInheritedSeq
 	}
 
-	seen := make(map[string]struct{}, len(candidates))
+	seen := make(map[string]int, len(candidates))
 	out := make([]model.TokenUsage, 0, len(candidates))
 	for _, candidate := range candidates {
 		if candidate.afterHeader {
@@ -197,13 +195,8 @@ func parseTranscript(reader io.Reader, fallbackSessionID string) ([]model.TokenU
 		if modelValue == "" {
 			modelValue = "unknown"
 		}
-		uuid := dshUUID(sessionID, candidate.recordType, candidate.identity, candidate.timeMs, candidate.provider, modelValue, candidate.usage)
-		if _, ok := seen[uuid]; ok {
-			continue
-		}
-		seen[uuid] = struct{}{}
-
-		out = append(out, model.TokenUsage{
+		uuid := dshUUID(sessionID, candidate.recordType, candidate.identity, candidate.timeMs)
+		usage := model.TokenUsage{
 			Source:              sourceName,
 			Model:               modelValue,
 			Project:             project,
@@ -214,7 +207,15 @@ func parseTranscript(reader io.Reader, fallbackSessionID string) ([]model.TokenU
 			Thoughts:            candidate.usage.ReasoningTokens,
 			Timestamp:           time.UnixMilli(candidate.timeMs).UTC(),
 			UUID:                uuid,
-		})
+		}
+		// A replayed line can carry corrected usage. Keep the last occurrence,
+		// matching the scanner's UUID dedup and the DB upsert semantics.
+		if index, ok := seen[uuid]; ok {
+			out[index] = usage
+			continue
+		}
+		seen[uuid] = len(out)
+		out = append(out, usage)
 	}
 	return out, nil
 }
@@ -247,10 +248,11 @@ func lastStreamUsage(stream []dshStreamEntry) *dshUsage {
 	return nil
 }
 
-func dshUUID(sessionID, recordType, identity string, timeMs int64, provider, model string, usage *dshUsage) string {
+// dshUUID identifies the event entity, not its payload. Token counts, provider
+// and model are deliberately excluded so a replayed or corrected record upserts
+// the same row instead of inserting a second one.
+func dshUUID(sessionID, recordType, identity string, timeMs int64) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s|%s|%s|%d|%s|%s|%d|%d|%d|%d|%d",
-		sessionID, recordType, identity, timeMs, provider, model,
-		usage.InputTokens, usage.OutputTokens, usage.CacheReadTokens, usage.CacheWriteTokens, usage.ReasoningTokens)
+	fmt.Fprintf(h, "%s|%s|%s|%d", sessionID, recordType, identity, timeMs)
 	return "dsh:" + hex.EncodeToString(h.Sum(nil))
 }

@@ -52,6 +52,13 @@ func (s *DBSink) Supersede(source, filePath, deviceID, uuidPrefix string) (int64
 	return s.db.SupersedeUsageBySourceFilePathDeviceUUIDPrefix(source, filePath, deviceID, uuidPrefix)
 }
 
+// KnownUsageByFile returns the usage rows already stored for a file, keyed by
+// UUID. Sources that re-read a transcript after an append can use it to avoid
+// re-emitting unchanged historical records.
+func (s *DBSink) KnownUsageByFile(filePath string) (map[string]model.TokenUsage, error) {
+	return s.db.QueryUsageByFileUUIDs(filePath, s.deviceID)
+}
+
 func (s *DBSink) KnownFiles() ([]string, error) {
 	return s.db.ListKnownFiles()
 }

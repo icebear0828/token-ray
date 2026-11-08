@@ -1,6 +1,9 @@
 package sources
 
 import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -42,12 +45,18 @@ type piRecord struct {
 	} `json:"message"`
 }
 
+type piFileState struct {
+	sessionID string
+	model     string
+	project   string
+}
+
 // NewPiSource watches Pi Agent session transcripts.
 func NewPiSource(home string) *JSONLSource {
 	return newJSONLSource(
 		source.Descriptor{ID: "pi-agent", Source: piSourceName, Label: "PI", Builtin: true},
 		[]string{piSessionsDir(home)},
-		&piParser{},
+		newPiParser(),
 	)
 }
 
@@ -58,20 +67,73 @@ func piSessionsDir(home string) string {
 	return filepath.Join(home, ".pi", "agent", "sessions")
 }
 
-// piParser keeps the model and session id learned from earlier lines in the
-// same transcript. The scanner serializes scans per source, but the mutex
-// keeps the parser safe if a future caller bypasses the runner.
+// piParser keeps the model, session id and project learned from earlier lines
+// in the same transcript. The scanner serializes scans per source, but the
+// mutex keeps the parser safe if a future caller bypasses the runner.
 type piParser struct {
-	mu           sync.Mutex
-	currentModel string
-	sessionID    string
+	mu          sync.Mutex
+	states      map[string]piFileState
+	currentPath string
+	current     piFileState
 }
 
-func (p *piParser) ResetFile(path string) {
+func newPiParser() *piParser {
+	return &piParser{states: make(map[string]piFileState)}
+}
+
+func (p *piParser) ResetFile(path string, offset int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.currentModel = ""
-	p.sessionID = piSessionIDFromPath(path)
+
+	if p.states == nil {
+		p.states = make(map[string]piFileState)
+	}
+	p.currentPath = path
+	if offset == 0 {
+		p.current = piFileState{
+			sessionID: piSessionIDFromPath(path),
+			project:   piProjectFromDir(path),
+		}
+		p.states[path] = p.current
+		return
+	}
+	if state, ok := p.states[path]; ok {
+		p.current = state
+		return
+	}
+	state := piFileState{
+		sessionID: piSessionIDFromPath(path),
+		project:   piProjectFromDir(path),
+	}
+	state = p.readPrefixState(path, offset, state)
+	p.states[path] = state
+	p.current = state
+}
+
+// readPrefixState recovers the model/session/project state after a process
+// restart. The session header and model_change records are written before the
+// stored offset, so replaying only that prefix is enough to resume an
+// incremental scan mid-file.
+func (p *piParser) readPrefixState(path string, limit int64, state piFileState) piFileState {
+	file, err := os.Open(path)
+	if err != nil {
+		return state
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	var read int64
+	for read < limit {
+		line, err := reader.ReadString('\n')
+		read += int64(len(line))
+		if len(line) > 0 {
+			state = applyPiLine(state, line)
+		}
+		if err != nil {
+			break
+		}
+	}
+	return state
 }
 
 func (p *piParser) Parse(line string) (model.TokenUsage, string, bool) {
@@ -85,25 +147,12 @@ func (p *piParser) Parse(line string) (model.TokenUsage, string, bool) {
 
 	switch record.Type {
 	case "session":
-		if record.ID != "" {
-			p.sessionID = record.ID
-		}
-		if record.ModelID != "" {
-			p.currentModel = record.ModelID
-		} else if record.Model != "" {
-			p.currentModel = record.Model
-		}
-		project := ""
-		if record.Cwd != "" {
-			project = watcher.ExtractProjectNameFromCWD(record.Cwd)
-		}
-		return model.TokenUsage{}, project, false
+		p.current = p.current.applyRecord(record)
+		p.cacheCurrent()
+		return model.TokenUsage{}, p.current.project, false
 	case "model_change":
-		if record.ModelID != "" {
-			p.currentModel = record.ModelID
-		} else if record.Model != "" {
-			p.currentModel = record.Model
-		}
+		p.current = p.current.applyRecord(record)
+		p.cacheCurrent()
 		return model.TokenUsage{}, "", false
 	}
 
@@ -112,7 +161,8 @@ func (p *piParser) Parse(line string) (model.TokenUsage, string, bool) {
 	case record.Type == "message" && (record.Message.Role == "assistant" || record.Message.Role == "toolResult"):
 		usage = record.Message.Usage
 		if record.Message.Model != "" {
-			p.currentModel = record.Message.Model
+			p.current.model = record.Message.Model
+			p.cacheCurrent()
 		}
 	case record.Type == "compaction" || record.Type == "branch_summary" || record.Type == "usage":
 		usage = record.Usage
@@ -121,16 +171,70 @@ func (p *piParser) Parse(line string) (model.TokenUsage, string, bool) {
 		return model.TokenUsage{}, "", false
 	}
 
-	u := piTokenUsage(usage, p.currentModel, p.sessionID, record)
+	u := piTokenUsage(usage, p.current.model, p.current.sessionID, record)
 	if u.InputTokens == 0 && u.OutputTokens == 0 && u.CachedTokens == 0 && u.CacheCreationTokens == 0 {
 		return model.TokenUsage{}, "", false
 	}
 	return u, "", true
 }
 
-func (p *piParser) ProjectFromPath(string) string { return "" }
+func (p *piParser) ProjectFromPath(string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.current.project
+}
 
-func (p *piParser) FallbackUUID(string, string, int64, model.TokenUsage) string { return "" }
+func (p *piParser) FallbackUUID(deviceID, path string, lineStartOffset int64, _ model.TokenUsage) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "pi|%s|%s|%d", deviceID, path, lineStartOffset)
+	return "pi:" + hex.EncodeToString(h.Sum(nil))
+}
+
+func (p *piParser) cacheCurrent() {
+	if p.currentPath == "" {
+		return
+	}
+	if p.states == nil {
+		p.states = make(map[string]piFileState)
+	}
+	p.states[p.currentPath] = p.current
+}
+
+func (s piFileState) applyRecord(record piRecord) piFileState {
+	switch record.Type {
+	case "session":
+		if record.ID != "" {
+			s.sessionID = record.ID
+		}
+		if record.ModelID != "" {
+			s.model = record.ModelID
+		} else if record.Model != "" {
+			s.model = record.Model
+		}
+		if record.Cwd != "" {
+			s.project = watcher.ExtractProjectNameFromCWD(record.Cwd)
+		}
+	case "model_change":
+		if record.ModelID != "" {
+			s.model = record.ModelID
+		} else if record.Model != "" {
+			s.model = record.Model
+		}
+	case "message":
+		if record.Message.Role == "assistant" && record.Message.Model != "" {
+			s.model = record.Message.Model
+		}
+	}
+	return s
+}
+
+func applyPiLine(state piFileState, line string) piFileState {
+	var record piRecord
+	if err := json.Unmarshal([]byte(line), &record); err != nil {
+		return state
+	}
+	return state.applyRecord(record)
+}
 
 func piTokenUsage(usage *piUsage, currentModel, sessionID string, record piRecord) model.TokenUsage {
 	reasoning := usage.Reasoning
@@ -165,6 +269,18 @@ func piSessionIDFromPath(path string) string {
 		return base[idx+1:]
 	}
 	return base
+}
+
+// piProjectFromDir is a best-effort fallback for sessions whose header has not
+// been seen yet. Pi sanitizes the working directory into a folder name such as
+// --Users--c--myproject--; the last segment is the project name.
+func piProjectFromDir(path string) string {
+	dir := filepath.Base(filepath.Dir(path))
+	parts := strings.FieldsFunc(dir, func(r rune) bool { return r == '-' })
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return ""
 }
 
 func parsePiTimestamp(value string) time.Time {

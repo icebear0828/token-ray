@@ -300,6 +300,30 @@ func (d *DB) QueryToolShareBuckets(startInclusive time.Time, endExclusive time.T
 	return buckets, rows.Err()
 }
 
+// QueryUsageByFileUUIDs returns the usage rows already stored for a file,
+// keyed by UUID. Sources that re-read a transcript use it to skip unchanged
+// historical records instead of re-emitting them.
+func (d *DB) QueryUsageByFileUUIDs(filePath string, deviceID string) (map[string]model.TokenUsage, error) {
+	query := `SELECT uuid, source, model, project, input_tokens, cached_tokens, cache_creation_tokens, output_tokens
+		FROM usage_records
+		WHERE file_path = ? AND device_id = ? AND uuid IS NOT NULL AND uuid != '' AND COALESCE(superseded, 0) = 0`
+	rows, err := d.conn.Query(query, filePath, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]model.TokenUsage)
+	for rows.Next() {
+		var u model.TokenUsage
+		if err := rows.Scan(&u.UUID, &u.Source, &u.Model, &u.Project, &u.InputTokens, &u.CachedTokens, &u.CacheCreationTokens, &u.OutputTokens); err != nil {
+			return nil, err
+		}
+		out[u.UUID] = u
+	}
+	return out, rows.Err()
+}
+
 // QueryStatsSince returns per-model stats since the given time, sorted by cost descending.
 // QueryStatsSince returns per-model stats since the given time, sorted by cost descending.
 func (d *DB) QueryStatsSince(since time.Time, deviceID string, source string) ([]ModelStat, error) {

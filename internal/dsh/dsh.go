@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"ai-flight-dashboard/internal/model"
 	"ai-flight-dashboard/internal/source"
 )
 
@@ -20,8 +21,10 @@ var transcriptNamePattern = regexp.MustCompile(`^session(?:\.v(\d+))?\.jsonl(\.z
 
 // Source watches DeepSeek Harness session transcripts.
 type Source struct {
-	root string
-	mu   sync.Mutex
+	root         string
+	fullInterval time.Duration
+	mu           sync.Mutex
+	lastFull     time.Time
 }
 
 func New(home string) *Source {
@@ -29,7 +32,7 @@ func New(home string) *Source {
 	if root == "" {
 		root = filepath.Join(home, ".dsh")
 	}
-	return &Source{root: root}
+	return &Source{root: root, fullInterval: time.Minute}
 }
 
 func (s *Source) Descriptor() source.Descriptor {
@@ -37,7 +40,7 @@ func (s *Source) Descriptor() source.Descriptor {
 }
 
 func (s *Source) WatchDirs() []string {
-	dir := filepath.Join(s.root, "sessions")
+	dir := s.sessionsRoot()
 	if _, err := os.Stat(dir); err == nil {
 		return []string{dir}
 	}
@@ -48,19 +51,10 @@ func (s *Source) Scan(ctx context.Context, sink source.Sink) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	dirs, err := sessionDirs(filepath.Join(s.root, "sessions"))
-	if err != nil {
-		return err
+	if s.shouldFullScan() {
+		return s.scanAll(ctx, sink)
 	}
-	for _, dir := range dirs {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := s.scanSessionDir(dir, sink); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.scanKnown(ctx, sink)
 }
 
 func (s *Source) ScanFile(ctx context.Context, path string, sink source.Sink) error {
@@ -82,6 +76,79 @@ func (s *Source) ScanFile(ctx context.Context, path string, sink source.Sink) er
 		return err
 	}
 	return s.scanSessionDir(dir, sink)
+}
+
+func (s *Source) shouldFullScan() bool {
+	interval := s.fullInterval
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	if s.lastFull.IsZero() || time.Since(s.lastFull) >= interval {
+		s.lastFull = time.Now()
+		return true
+	}
+	return false
+}
+
+func (s *Source) scanAll(ctx context.Context, sink source.Sink) error {
+	dirs, err := sessionDirs(s.sessionsRoot())
+	if err != nil {
+		return err
+	}
+	for _, dir := range dirs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := s.scanSessionDir(dir, sink); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// scanKnown uses the offsets persisted by previous scans so the default 2s
+// poll does not walk the whole sessions tree. A full walk still happens once
+// per fullInterval to discover new sessions.
+func (s *Source) scanKnown(ctx context.Context, sink source.Sink) error {
+	store, ok := sink.(source.JSONLStore)
+	if !ok {
+		return s.scanAll(ctx, sink)
+	}
+	files, err := store.KnownFiles()
+	if err != nil {
+		return err
+	}
+	root := s.sessionsRoot()
+	seen := make(map[string]struct{})
+	for _, file := range files {
+		if !isTranscriptName(filepath.Base(file)) || !underRoot(root, file) {
+			continue
+		}
+		dir := filepath.Dir(file)
+		if _, ok := seen[dir]; ok {
+			continue
+		}
+		seen[dir] = struct{}{}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := s.scanSessionDir(dir, sink); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Source) sessionsRoot() string {
+	return filepath.Join(s.root, "sessions")
+}
+
+func underRoot(root, path string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
 func (s *Source) scanSessionDir(dir string, sink source.Sink) error {
@@ -106,12 +173,32 @@ func (s *Source) scanSessionDir(dir string, sink source.Sink) error {
 	if err != nil {
 		return err
 	}
+
+	var known map[string]model.TokenUsage
+	if index, ok := sink.(source.UsageIndex); ok {
+		known, err = index.KnownUsageByFile(path)
+		if err != nil {
+			return err
+		}
+	}
 	for _, u := range usage {
+		if existing, ok := known[u.UUID]; ok && sameUsage(existing, u) {
+			continue
+		}
 		if err := sink.Emit(u, path); err != nil {
 			return err
 		}
 	}
 	return sink.SetOffset(path, info.Size())
+}
+
+func sameUsage(a, b model.TokenUsage) bool {
+	return a.Model == b.Model &&
+		a.Project == b.Project &&
+		a.InputTokens == b.InputTokens &&
+		a.CachedTokens == b.CachedTokens &&
+		a.CacheCreationTokens == b.CacheCreationTokens &&
+		a.OutputTokens == b.OutputTokens
 }
 
 type transcript struct {
