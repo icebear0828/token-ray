@@ -116,10 +116,14 @@ export function App() {
             sources: summaryRes.sources.map((source) => {
               const models = source.models.length
                 ? source.models
-                : previousModels.get(source.name) ?? [];
+                : isBackgroundPoll
+                  ? previousModels.get(source.name) ?? []
+                  : [];
               return { ...source, models };
             }),
-            projects: prev?.projects,
+            // A user-initiated scope change must not keep the previous
+            // window's projects visible while details are in flight.
+            projects: isBackgroundPoll ? prev?.projects : undefined,
           };
         });
         setLoadError("");
@@ -135,8 +139,9 @@ export function App() {
           prev
             ? {
                 ...prev,
-                sources:
-                  detailsRes.sources.length > 0 ? detailsRes.sources : prev.sources,
+                // A successful details response is authoritative even when it
+                // is empty: the selected window/source may have no usage.
+                sources: detailsRes.sources,
                 projects: detailsRes.projects ?? [],
                 is_paused: detailsRes.is_paused ?? prev.is_paused,
               }

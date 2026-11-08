@@ -14,7 +14,7 @@ interface DailyCostChartProps {
 
 const axisLabel = (date: string, granularity: BucketGranularity): string => {
   if (granularity === "hourly") return date.slice(11, 16);
-  if (granularity === "monthly") return date.slice(2);
+  if (granularity === "monthly") return date;
   return date.slice(5);
 };
 
@@ -151,7 +151,10 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({
         </div>
 
         {/* Bars Container */}
-        <div className="relative z-10 flex h-full items-end gap-[3px] pl-14 pb-5">
+        <div
+          className="relative z-10 flex h-full items-end justify-center gap-[3px] pl-14 pb-5"
+          onMouseLeave={() => setHoveredIdx(null)}
+        >
           {stats.safeData.map((point, index) => {
             const value = stats.valueOf(point);
             const heightPct =
@@ -166,7 +169,7 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({
                 key={point.date || index}
                 onMouseEnter={() => setHoveredIdx(index)}
                 onMouseLeave={() => setHoveredIdx(null)}
-                className="group relative flex h-full flex-1 cursor-pointer flex-col items-center justify-end"
+                className="group relative flex h-full max-w-[48px] flex-1 cursor-pointer flex-col items-center justify-end"
               >
                 {/* Hover column highlight */}
                 {isHovered && (
@@ -196,7 +199,7 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({
         </div>
 
         {/* Sparse X-Axis Labels */}
-        <div className="flex justify-between pl-14 text-[10px] text-slate-400">
+        <div className="flex justify-center gap-[3px] pl-14 text-[10px] text-slate-400">
           {stats.safeData.map((point, idx) => {
             const showLabel =
               idx === 0 ||
@@ -205,7 +208,7 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({
             return (
               <span
                 key={point.date || idx}
-                className="font-mono-num flex-1 text-center whitespace-nowrap"
+                className="font-mono-num max-w-[48px] flex-1 text-center whitespace-nowrap"
               >
                 {showLabel ? axisLabel(point.date, granularity) : ""}
               </span>
