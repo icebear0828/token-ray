@@ -46,14 +46,20 @@ type codexSessionTotal struct {
 	hasTokens bool
 }
 
-func (s *Scanner) scanSessions(threads map[string]threadInfo) (int, bool, error) {
+func (s *Scanner) scanSessions(threads map[string]threadInfo, full bool, offsets map[string]int64) (int, bool, error) {
 	if s.SessionsDir == "" {
 		return 0, false, nil
 	}
 	if _, err := os.Stat(s.SessionsDir); err != nil {
 		return 0, false, nil
 	}
+	if full {
+		return s.walkSessions(threads, offsets)
+	}
+	return s.scanKnownSessions(threads, offsets)
+}
 
+func (s *Scanner) walkSessions(threads map[string]threadInfo, offsets map[string]int64) (int, bool, error) {
 	count := 0
 	hasSessionTotals := false
 	err := filepath.WalkDir(s.SessionsDir, func(path string, entry os.DirEntry, walkErr error) error {
@@ -63,7 +69,7 @@ func (s *Scanner) scanSessions(threads map[string]threadInfo) (int, bool, error)
 		if entry.IsDir() || filepath.Ext(path) != ".jsonl" {
 			return nil
 		}
-		n, hasTotals, err := s.scanSessionFile(path, threads)
+		n, hasTotals, err := s.scanSessionFile(path, threads, offsets)
 		if err != nil {
 			return err
 		}
@@ -79,13 +85,36 @@ func (s *Scanner) scanSessions(threads map[string]threadInfo) (int, bool, error)
 	return count, hasSessionTotals, nil
 }
 
-func (s *Scanner) scanSessionFile(path string, threads map[string]threadInfo) (int, bool, error) {
+// scanKnownSessions revisits the session files recorded in scan_offsets without
+// walking the sessions tree, so new usage in active sessions is still picked up
+// between full walks.
+func (s *Scanner) scanKnownSessions(threads map[string]threadInfo, offsets map[string]int64) (int, bool, error) {
+	count := 0
+	hasSessionTotals := false
+	for key := range offsets {
+		if !strings.HasPrefix(key, sessionOffsetPrefix) {
+			continue
+		}
+		path := filepath.FromSlash(strings.TrimPrefix(key, sessionOffsetPrefix))
+		n, hasTotals, err := s.scanSessionFile(path, threads, offsets)
+		if err != nil {
+			return count, hasSessionTotals, err
+		}
+		count += n
+		if hasTotals {
+			hasSessionTotals = true
+		}
+	}
+	return count, hasSessionTotals, nil
+}
+
+func (s *Scanner) scanSessionFile(path string, threads map[string]threadInfo, offsets map[string]int64) (int, bool, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return 0, false, nil
 	}
-	offsetKey := "codex:session:" + filepath.ToSlash(path)
-	offset, err := s.sink.Offset(offsetKey)
+	offsetKey := sessionOffsetPrefix + filepath.ToSlash(path)
+	offset, err := s.offsetFor(offsets, offsetKey)
 	if err != nil {
 		return 0, false, err
 	}
@@ -131,6 +160,9 @@ func (s *Scanner) scanSessionFile(path string, threads map[string]threadInfo) (i
 	}
 	if err := s.sink.SetOffset(offsetKey, info.Size()); err != nil {
 		return 0, true, err
+	}
+	if offsets != nil {
+		offsets[offsetKey] = info.Size()
 	}
 	return 1, true, nil
 }

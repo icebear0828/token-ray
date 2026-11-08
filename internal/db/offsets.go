@@ -14,6 +14,27 @@ func (d *DB) GetOffset(filePath string) (int64, error) {
 	return offset, err
 }
 
+// AllOffsets returns every recorded scan offset keyed by file path. Scanners
+// use it to avoid issuing one query per known file.
+func (d *DB) AllOffsets() (map[string]int64, error) {
+	rows, err := d.conn.Query("SELECT file_path, byte_offset FROM scan_offsets WHERE file_path NOT LIKE 'migration:%'")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	offsets := make(map[string]int64)
+	for rows.Next() {
+		var path string
+		var offset int64
+		if err := rows.Scan(&path, &offset); err != nil {
+			return nil, err
+		}
+		offsets[path] = offset
+	}
+	return offsets, rows.Err()
+}
+
 // SetOffset upserts the byte offset for a file.
 // SetOffset upserts the byte offset for a file.
 func (d *DB) SetOffset(filePath string, offset int64) error {
@@ -79,7 +100,7 @@ func (d *DB) ListKnownDirs() ([]string, error) {
 // ListKnownFiles returns all file paths cached in scan_offsets.
 // ListKnownFiles returns all file paths cached in scan_offsets.
 func (d *DB) ListKnownFiles() ([]string, error) {
-	rows, err := d.conn.Query("SELECT file_path FROM scan_offsets ORDER BY file_path")
+	rows, err := d.conn.Query("SELECT file_path FROM scan_offsets WHERE file_path NOT LIKE 'migration:%' ORDER BY file_path")
 	if err != nil {
 		return nil, err
 	}

@@ -165,11 +165,16 @@ func (genericParser) FallbackUUID(deviceID, path string, lineStartOffset int64, 
 	return ""
 }
 
-// codexSource wraps the SQLite/session scanner as a poll-only source.
+// codexSource wraps the SQLite/session scanner as a poll-only source. It keeps
+// one Scanner alive so the thread-table cache and full-scan cadence persist
+// between ticks.
 type codexSource struct {
 	statePath   string
 	logsPath    string
 	sessionsDir string
+
+	mu      sync.Mutex
+	scanner *codexusage.Scanner
 }
 
 func NewCodexSource() source.Source {
@@ -188,12 +193,24 @@ func (s *codexSource) Descriptor() source.Descriptor {
 func (s *codexSource) WatchDirs() []string { return nil }
 
 func (s *codexSource) Scan(ctx context.Context, sink source.Sink) error {
-	_, err := codexusage.NewWithSessionPaths(sink, s.statePath, s.logsPath, s.sessionsDir).Scan()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.scanner == nil {
+		s.scanner = codexusage.NewWithSessionPaths(sink, s.statePath, s.logsPath, s.sessionsDir)
+	} else {
+		s.scanner.SetSink(sink)
+	}
+	_, err := s.scanner.Scan()
 	return err
 }
 
-// antigravitySource wraps the Antigravity scanner as a poll-only source.
-type antigravitySource struct{}
+// antigravitySource wraps the Antigravity scanner as a poll-only source. It
+// keeps one Scanner alive so metadata caches and the full-scan cadence persist
+// between ticks.
+type antigravitySource struct {
+	mu      sync.Mutex
+	scanner *agyscanner.Scanner
+}
 
 func NewAntigravitySource() source.Source { return &antigravitySource{} }
 
@@ -204,7 +221,14 @@ func (s *antigravitySource) Descriptor() source.Descriptor {
 func (s *antigravitySource) WatchDirs() []string { return nil }
 
 func (s *antigravitySource) Scan(ctx context.Context, sink source.Sink) error {
-	_, err := agyscanner.New(sink).Scan()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.scanner == nil {
+		s.scanner = agyscanner.New(sink)
+	} else {
+		s.scanner.SetSink(sink)
+	}
+	_, err := s.scanner.Scan()
 	return err
 }
 

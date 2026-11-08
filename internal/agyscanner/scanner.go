@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"ai-flight-dashboard/internal/antigravity"
@@ -17,12 +18,36 @@ import (
 	"ai-flight-dashboard/internal/watcher"
 )
 
+const (
+	transcriptOffsetPrefix = "agy:transcript:"
+	defaultModelName       = "gemini-3.8-flash"
+)
+
 type Scanner struct {
 	sink         source.Sink
 	LogDir       string
 	HistPath     string
 	BrainDir     string
 	SettingsPath string
+
+	mu           sync.Mutex
+	lastFull     time.Time
+	fullInterval time.Duration
+
+	metaMu        sync.Mutex
+	workspaces    map[string]string
+	histSig       fileSignature
+	histValid     bool
+	defaultModel  string
+	settingsSig   fileSignature
+	settingsValid bool
+}
+
+// fileSignature identifies a metadata file's on-disk state so it is only
+// re-read after it changes.
+type fileSignature struct {
+	modTime time.Time
+	size    int64
 }
 
 func New(sink source.Sink) *Scanner {
@@ -34,12 +59,24 @@ func New(sink source.Sink) *Scanner {
 		HistPath:     filepath.Join(base, "history.jsonl"),
 		BrainDir:     filepath.Join(base, "brain"),
 		SettingsPath: filepath.Join(base, "settings.json"),
+		fullInterval: time.Minute,
 	}
 }
 
+// SetSink updates the target sink so a long-lived Scanner remains attached to
+// the active sink instance when callers pass a new one into Scan.
+func (s *Scanner) SetSink(sink source.Sink) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sink = sink
+}
+
 func (s *Scanner) Scan() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	total := 0
-	if n, err := s.ScanTranscripts(); err == nil {
+	if n, err := s.scanTranscripts(); err == nil {
 		total += n
 	}
 
@@ -127,7 +164,26 @@ func (s *Scanner) scanTrajectory(port int, cascadeID string, workspaces map[stri
 }
 
 func (s *Scanner) loadWorkspaces() map[string]string {
-	f, err := os.Open(s.HistPath)
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
+
+	sig, ok := readSignature(s.HistPath)
+	if !ok {
+		s.workspaces = nil
+		s.histValid = false
+		return nil
+	}
+	if s.histValid && s.histSig == sig {
+		return s.workspaces
+	}
+	s.workspaces = readWorkspaces(s.HistPath)
+	s.histSig = sig
+	s.histValid = true
+	return s.workspaces
+}
+
+func readWorkspaces(path string) map[string]string {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil
 	}
@@ -238,11 +294,30 @@ type transcriptEntry struct {
 
 func (s *Scanner) loadDefaultModel() string {
 	if s.SettingsPath == "" {
-		return "gemini-3.8-flash"
+		return defaultModelName
 	}
-	data, err := os.ReadFile(s.SettingsPath)
+
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
+
+	sig, ok := readSignature(s.SettingsPath)
+	if !ok {
+		s.settingsValid = false
+		return defaultModelName
+	}
+	if s.settingsValid && s.settingsSig == sig {
+		return s.defaultModel
+	}
+	s.defaultModel = readDefaultModel(s.SettingsPath)
+	s.settingsSig = sig
+	s.settingsValid = true
+	return s.defaultModel
+}
+
+func readDefaultModel(path string) string {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return "gemini-3.8-flash"
+		return defaultModelName
 	}
 	var settings struct {
 		Model string `json:"model"`
@@ -253,10 +328,27 @@ func (s *Scanner) loadDefaultModel() string {
 			return normalized
 		}
 	}
-	return "gemini-3.8-flash"
+	return defaultModelName
 }
 
+func readSignature(path string) (fileSignature, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fileSignature{}, false
+	}
+	return fileSignature{modTime: info.ModTime(), size: info.Size()}, true
+}
+
+// ScanTranscripts scans the brain directory. It walks the directory at most
+// once per fullInterval and otherwise revisits only the transcripts already
+// recorded in scan_offsets.
 func (s *Scanner) ScanTranscripts() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scanTranscripts()
+}
+
+func (s *Scanner) scanTranscripts() (int, error) {
 	if s.BrainDir == "" {
 		return 0, nil
 	}
@@ -267,6 +359,18 @@ func (s *Scanner) ScanTranscripts() (int, error) {
 	workspaces := s.loadWorkspaces()
 	defaultModel := s.loadDefaultModel()
 
+	offsets, hasOffsets := s.allOffsets()
+	full := s.shouldFullScan()
+	if !hasOffsets {
+		full = true
+	}
+	if full {
+		return s.walkTranscripts(workspaces, defaultModel, offsets)
+	}
+	return s.scanKnownTranscripts(workspaces, defaultModel, offsets)
+}
+
+func (s *Scanner) walkTranscripts(workspaces map[string]string, defaultModel string, offsets map[string]int64) (int, error) {
 	entries, err := os.ReadDir(s.BrainDir)
 	if err != nil {
 		return 0, err
@@ -278,28 +382,99 @@ func (s *Scanner) ScanTranscripts() (int, error) {
 			continue
 		}
 		cascadeID := e.Name()
-		transcriptPath := filepath.Join(s.BrainDir, cascadeID, ".system_generated", "logs", "transcript.jsonl")
-		info, err := os.Stat(transcriptPath)
+		path := transcriptPath(s.BrainDir, cascadeID)
+		info, err := os.Stat(path)
 		if err != nil || info.Size() == 0 {
 			continue
 		}
-
-		offsetKey := "agy:transcript:" + cascadeID
-		lastOffset, _ := s.sink.Offset(offsetKey)
-		if info.Size() <= lastOffset {
-			continue
-		}
-
-		n, newOffset, err := s.scanTranscriptFile(transcriptPath, cascadeID, lastOffset, defaultModel, workspaces)
+		n, err := s.scanTranscriptPath(path, cascadeID, info.Size(), workspaces, defaultModel, offsets)
 		if err != nil {
 			continue
-		}
-		if newOffset > lastOffset {
-			s.sink.SetOffset(offsetKey, newOffset)
 		}
 		total += n
 	}
 	return total, nil
+}
+
+func (s *Scanner) scanKnownTranscripts(workspaces map[string]string, defaultModel string, offsets map[string]int64) (int, error) {
+	total := 0
+	for key := range offsets {
+		if !strings.HasPrefix(key, transcriptOffsetPrefix) {
+			continue
+		}
+		cascadeID := strings.TrimPrefix(key, transcriptOffsetPrefix)
+		path := transcriptPath(s.BrainDir, cascadeID)
+		info, err := os.Stat(path)
+		if err != nil || info.Size() == 0 {
+			continue
+		}
+		n, err := s.scanTranscriptPath(path, cascadeID, info.Size(), workspaces, defaultModel, offsets)
+		if err != nil {
+			continue
+		}
+		total += n
+	}
+	return total, nil
+}
+
+func transcriptPath(brainDir, cascadeID string) string {
+	return filepath.Join(brainDir, cascadeID, ".system_generated", "logs", "transcript.jsonl")
+}
+
+func (s *Scanner) scanTranscriptPath(path, cascadeID string, size int64, workspaces map[string]string, defaultModel string, offsets map[string]int64) (int, error) {
+	offsetKey := transcriptOffsetPrefix + cascadeID
+	lastOffset, err := s.offsetFor(offsets, offsetKey)
+	if err != nil {
+		return 0, err
+	}
+	if size <= lastOffset {
+		return 0, nil
+	}
+
+	n, newOffset, err := s.scanTranscriptFile(path, cascadeID, lastOffset, defaultModel, workspaces)
+	if err != nil {
+		return 0, err
+	}
+	if newOffset > lastOffset {
+		if err := s.sink.SetOffset(offsetKey, newOffset); err != nil {
+			return n, err
+		}
+		if offsets != nil {
+			offsets[offsetKey] = newOffset
+		}
+	}
+	return n, nil
+}
+
+func (s *Scanner) shouldFullScan() bool {
+	interval := s.fullInterval
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	if s.lastFull.IsZero() || time.Since(s.lastFull) >= interval {
+		s.lastFull = time.Now()
+		return true
+	}
+	return false
+}
+
+func (s *Scanner) allOffsets() (map[string]int64, bool) {
+	index, ok := s.sink.(source.OffsetIndex)
+	if !ok {
+		return nil, false
+	}
+	offsets, err := index.AllOffsets()
+	if err != nil {
+		return nil, false
+	}
+	return offsets, true
+}
+
+func (s *Scanner) offsetFor(offsets map[string]int64, key string) (int64, error) {
+	if offsets != nil {
+		return offsets[key], nil
+	}
+	return s.sink.Offset(key)
 }
 
 func (s *Scanner) scanTranscriptFile(path, cascadeID string, fromOffset int64, defaultModel string, workspaces map[string]string) (int, int64, error) {
