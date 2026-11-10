@@ -132,11 +132,35 @@
       "cache_creation_price_per_m": 12.5,
       "output_price_per_m": 50
     },
+    "claude-fable-5-2": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
+    },
+    "claude-fable-5-2-fast": {
+      "input_price_per_m": 16,
+      "cached_price_per_m": 0.4,
+      "cache_creation_price_per_m": 20,
+      "output_price_per_m": 80
+    },
+    "claude-fable-5-2@default": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
+    },
     "claude-fable-5.1": {
       "input_price_per_m": 10,
       "cached_price_per_m": 0.25,
       "cache_creation_price_per_m": 12.5,
       "output_price_per_m": 50
+    },
+    "claude-fable-5.2": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
     },
     "claude-fable-5@default": {
       "input_price_per_m": 10,
