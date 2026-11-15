@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ai-flight-dashboard/internal/calculator"
+	"token-ray/internal/calculator"
 )
 
 func TestCalculateCost(t *testing.T) {

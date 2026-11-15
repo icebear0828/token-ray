@@ -1,22 +1,22 @@
 package main
 
 import (
-	root "ai-flight-dashboard"
-	"ai-flight-dashboard/internal/alert"
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/desktop"
-	"ai-flight-dashboard/internal/forwarder"
-	"ai-flight-dashboard/internal/lan"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/plugin"
-	"ai-flight-dashboard/internal/source"
-	"ai-flight-dashboard/internal/sources"
-	"ai-flight-dashboard/internal/tui"
-	"ai-flight-dashboard/internal/updater"
-	"ai-flight-dashboard/internal/watcher"
-	"ai-flight-dashboard/internal/web"
+	root "token-ray"
+	"token-ray/internal/alert"
+	"token-ray/internal/calculator"
+	"token-ray/internal/config"
+	"token-ray/internal/db"
+	"token-ray/internal/desktop"
+	"token-ray/internal/forwarder"
+	"token-ray/internal/lan"
+	"token-ray/internal/model"
+	"token-ray/internal/plugin"
+	"token-ray/internal/source"
+	"token-ray/internal/sources"
+	"token-ray/internal/tui"
+	"token-ray/internal/updater"
+	"token-ray/internal/watcher"
+	"token-ray/internal/web"
 	"context"
 	"flag"
 	"fmt"
@@ -61,7 +61,7 @@ func main() {
 	budgetDaily := flag.Float64("budget-daily", 0, "Daily budget limit in USD (only for api mode, 0=disabled)")
 	syncMode := flag.String("sync-mode", "poll", "Sync mode: poll (default), fsnotify, once")
 	lanMode := flag.Bool("lan", true, "Enable UDP Multicast LAN discovery and broadcast")
-	dataDir := flag.String("data-dir", "", "Data directory for database and config (default: ~/.ai-flight-dashboard; env: AI_FLIGHT_DASHBOARD_DATA_DIR)")
+	dataDir := flag.String("data-dir", "", "Data directory for database and config (default: ~/.token-ray; env: TOKEN_RAY_DATA_DIR)")
 	flag.BoolVar(webMode, "w", false, "Run in web dashboard mode (shorthand)")
 	flag.StringVar(port, "p", "19100", "HTTP port for web mode (shorthand)")
 	flag.Parse()
@@ -445,7 +445,7 @@ func main() {
 			appMenu.Append(menu.EditMenu())
 		}
 
-		fmt.Println("🖥️  Starting AI Flight Dashboard (GUI mode)...")
+		fmt.Println("🖥️  Starting Token Ray (GUI mode)...")
 
 		// Wails expects index.html at the FS root; strip the "dist" prefix
 		guiAssets, err := fs.Sub(web.StaticFiles, "dist")
@@ -474,7 +474,7 @@ func main() {
 		})
 
 		guiOptions := &options.App{
-			Title:     "AI Flight Dashboard",
+			Title:     "Token Ray",
 			Width:     1280,
 			Height:    800,
 			MinWidth:  900,
@@ -493,7 +493,7 @@ func main() {
 				WebviewIsTransparent: true,
 				WindowIsTranslucent:  false,
 				About: &mac.AboutInfo{
-					Title:   "AI Flight Dashboard",
+					Title:   "Token Ray",
 					Message: "Real-time AI token cost monitoring",
 				},
 			},
@@ -550,7 +550,7 @@ func main() {
 
 	// TUI mode — starts instantly, data populates in background
 	homeDirTui, _ := os.UserHomeDir()
-	logPath := filepath.Join(homeDirTui, ".ai-flight-dashboard", "stats", "debug.log")
+	logPath := filepath.Join(homeDirTui, ".token-ray", "stats", "debug.log")
 	os.MkdirAll(filepath.Dir(logPath), 0755)
 	f, err := tea.LogToFile(logPath, "debug")
 	if err != nil {

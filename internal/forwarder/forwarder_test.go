@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/forwarder"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/forwarder"
+	"token-ray/internal/model"
 )
 
 func TestForwarder_Success(t *testing.T) {

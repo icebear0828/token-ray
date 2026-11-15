@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 type PeerInfo struct {

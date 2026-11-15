@@ -13,8 +13,8 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/model"
+	"token-ray/internal/watcher"
 )
 
 type dshUsage struct {

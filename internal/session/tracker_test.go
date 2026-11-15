@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/session"
+	"token-ray/internal/session"
 )
 
 func TestWindowUsage_EmptyTracker(t *testing.T) {

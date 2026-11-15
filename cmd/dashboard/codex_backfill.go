@@ -1,8 +1,8 @@
 package main
 
 import (
-	"ai-flight-dashboard/internal/codexusage"
-	"ai-flight-dashboard/internal/db"
+	"token-ray/internal/codexusage"
+	"token-ray/internal/db"
 	"log"
 )
 

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ai-flight-dashboard/internal/config"
+	"token-ray/internal/config"
 )
 
 func TestLoadConfig_FileNotExist(t *testing.T) {
@@ -82,7 +82,7 @@ func TestLoadConfig_MalformedJSON(t *testing.T) {
 
 func TestGetConfigPath(t *testing.T) {
 	config.SetDataDir("")
-	t.Setenv("AI_FLIGHT_DASHBOARD_DATA_DIR", "")
+	t.Setenv("TOKEN_RAY_DATA_DIR", "")
 
 	path := config.GetConfigPath()
 	if filepath.Base(path) != "config.json" {
@@ -92,7 +92,7 @@ func TestGetConfigPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedDefault := filepath.Join(home, ".ai-flight-dashboard", "config.json")
+	expectedDefault := filepath.Join(home, ".token-ray", "config.json")
 	if path != expectedDefault {
 		t.Errorf("expected default config path %s, got %s", expectedDefault, path)
 	}
@@ -120,14 +120,14 @@ func TestGetCustomPricingPathUsesDataDir(t *testing.T) {
 
 func TestGetDataDir_Default(t *testing.T) {
 	config.SetDataDir("")
-	t.Setenv("AI_FLIGHT_DASHBOARD_DATA_DIR", "")
+	t.Setenv("TOKEN_RAY_DATA_DIR", "")
 
 	dir := config.GetDataDir()
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := filepath.Join(home, ".ai-flight-dashboard")
+	expected := filepath.Join(home, ".token-ray")
 	if dir != expected {
 		t.Errorf("expected default home data directory %s, got %s", expected, dir)
 	}
@@ -146,7 +146,7 @@ func TestGetDataDir_Custom(t *testing.T) {
 func TestGetDataDir_EnvironmentOverride(t *testing.T) {
 	config.SetDataDir("")
 	envDir := filepath.Join(t.TempDir(), "env-data")
-	t.Setenv("AI_FLIGHT_DASHBOARD_DATA_DIR", envDir)
+	t.Setenv("TOKEN_RAY_DATA_DIR", envDir)
 
 	dir := config.GetDataDir()
 	if dir != envDir {
@@ -157,7 +157,7 @@ func TestGetDataDir_EnvironmentOverride(t *testing.T) {
 func TestGetDataDir_CustomOverridesEnvironment(t *testing.T) {
 	envDir := filepath.Join(t.TempDir(), "env-data")
 	customDir := filepath.Join(t.TempDir(), "custom-data")
-	t.Setenv("AI_FLIGHT_DASHBOARD_DATA_DIR", envDir)
+	t.Setenv("TOKEN_RAY_DATA_DIR", envDir)
 	config.SetDataDir(customDir)
 	defer config.SetDataDir("")
 
@@ -168,14 +168,14 @@ func TestGetDataDir_CustomOverridesEnvironment(t *testing.T) {
 }
 
 func TestGetDataDir_ExpandsHomeDirectory(t *testing.T) {
-	config.SetDataDir("~/ai-flight-test")
+	config.SetDataDir("~/token-ray-test")
 	defer config.SetDataDir("")
 
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := filepath.Join(home, "ai-flight-test")
+	expected := filepath.Join(home, "token-ray-test")
 	if dir := config.GetDataDir(); dir != expected {
 		t.Errorf("expected expanded home data directory %s, got %s", expected, dir)
 	}

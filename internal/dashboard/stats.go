@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/calculator"
+	"token-ray/internal/db"
+	"token-ray/internal/model"
 )
 
 // periodDurations maps the dashboard time-window labels to their lookback

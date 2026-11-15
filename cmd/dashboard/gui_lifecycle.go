@@ -3,7 +3,7 @@ package main
 import (
 	goruntime "runtime"
 
-	"ai-flight-dashboard/internal/desktop"
+	"token-ray/internal/desktop"
 
 	"github.com/wailsapp/wails/v2/pkg/options"
 )
@@ -14,7 +14,7 @@ func configureGUIWindowLifecycle(appOptions *options.App, app *desktop.App) {
 	// window quits instead of leaving an unreachable background process.
 	appOptions.HideWindowOnClose = goruntime.GOOS != "linux"
 	appOptions.SingleInstanceLock = &options.SingleInstanceLock{
-		UniqueId: "ai-flight-dashboard",
+		UniqueId: "token-ray",
 		OnSecondInstanceLaunch: func(secondInstanceData options.SecondInstanceData) {
 			app.ShowWindow()
 		},

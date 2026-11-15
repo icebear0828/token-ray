@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 // discoveryHosts merges subnet-sweep targets with explicit unicast targets

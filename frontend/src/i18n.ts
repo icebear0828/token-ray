@@ -3,7 +3,7 @@ import { initReactI18next } from "react-i18next";
 import zh from "./locales/zh.json";
 import en from "./locales/en.json";
 
-const savedLang = typeof window !== "undefined" ? localStorage.getItem("ai-flight-dashboard_lang") : null;
+const savedLang = typeof window !== "undefined" ? localStorage.getItem("token-ray_lang") : null;
 
 i18n.use(initReactI18next).init({
   resources: {

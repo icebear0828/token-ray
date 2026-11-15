@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/source"
 )
 
 // Runner owns the incremental-scan cadence for one line-oriented source:

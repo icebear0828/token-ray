@@ -11,7 +11,7 @@ func TestLooksLikeExecutable(t *testing.T) {
 		{"elf", []byte{0x7f, 'E', 'L', 'F', 1, 2, 3, 4}, true},
 		{"pe", []byte{'M', 'Z', 0, 0}, true},
 		{"macho64", []byte{0xcf, 0xfa, 0xed, 0xfe}, true},
-		{"checksum text", []byte("abc123  ai-flight-dashboard-linux-amd64\n"), false},
+		{"checksum text", []byte("abc123  token-ray-linux-amd64\n"), false},
 		{"too short", []byte{0x7f}, false},
 	}
 

@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/dashboard"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/lan"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/calculator"
+	"token-ray/internal/dashboard"
+	"token-ray/internal/db"
+	"token-ray/internal/lan"
+	"token-ray/internal/watcher"
 )
 
 func NewHandler(database *db.DB, calc *calculator.Calculator, wInst *watcher.Watcher, lanInst *lan.LAN, token string, distBinFS embed.FS) http.Handler {

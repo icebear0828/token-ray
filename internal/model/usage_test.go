@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 func TestSyncRecordJSONPreservesDeviceAndRepairMetadata(t *testing.T) {

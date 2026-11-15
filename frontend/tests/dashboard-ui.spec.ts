@@ -17,17 +17,17 @@ test('system logs can be inspected from the config drawer', async ({ page }) => 
   await page.route('**/api/lan/status', fulfillLANStatus);
   await page.route('**/api/config', (route) => fulfillConfig(route));
   await page.route('**/api/system/logs', async (route) => {
-    await fulfillJSON(route, { path: '/tmp/ai-flight-dashboard/stats' });
+    await fulfillJSON(route, { path: '/tmp/token-ray/stats' });
   });
 
   await page.goto('/');
 
   await page.getByRole('button', { name: '系统配置' }).click();
-  await expect(page.getByText('/tmp/ai-flight-dashboard/stats')).toBeVisible();
+  await expect(page.getByText('/tmp/token-ray/stats')).toBeVisible();
 
   await page.getByRole('button', { name: '打开日志目录' }).click();
   await expect(
-    page.getByText('系统诊断日志路径: /tmp/ai-flight-dashboard/stats')
+    page.getByText('系统诊断日志路径: /tmp/token-ray/stats')
   ).toBeVisible();
 });
 

@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/testutil"
 )
 
 func TestMainDispatchesAntigravityStatuslineCommand(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=TestAntigravityStatuslineHelperProcess")
 	cmd.Env = append(os.Environ(),
 		"GO_WANT_ANTIGRAVITY_STATUSLINE_HELPER=1",
-		"AI_FLIGHT_DASHBOARD_DATA_DIR="+t.TempDir(),
+		"TOKEN_RAY_DATA_DIR="+t.TempDir(),
 	)
 	cmd.Stdin = strings.NewReader(`{
 		"conversation_id": "main-dispatch",

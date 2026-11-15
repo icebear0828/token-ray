@@ -1,7 +1,7 @@
 # Binaries
 /dashboard
 /dashboard-gui
-/ai-flight-dashboard
+/token-ray
 
 # Dependencies
 node_modules/

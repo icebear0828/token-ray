@@ -7,7 +7,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== AI Flight Dashboard 一键部署脚本 ===${NC}"
+echo -e "${BLUE}=== Token Ray 一键部署脚本 ===${NC}"
 
 if [ "$EUID" -ne 0 ]; then
   echo -e "${RED}请使用 root 权限 (sudo) 运行此脚本。${NC}"
@@ -21,8 +21,8 @@ fi
 
 echo -e "${YELLOW}1. 编译二进制文件...${NC}"
 go build -o dashboard ./cmd/dashboard
-cp dashboard /usr/local/bin/ai-flight-dashboard
-chmod +x /usr/local/bin/ai-flight-dashboard
+cp dashboard /usr/local/bin/token-ray
+chmod +x /usr/local/bin/token-ray
 
 echo -e "${YELLOW}2. 选择部署模式:${NC}"
 echo "  1) 主控服务端 (Receiver) - 接收并展示面板"
@@ -43,7 +43,7 @@ fi
 if [ "$MODE" == "1" ]; then
     read -p "请输入 Web 服务监听端口 [默认 19100]: " PORT
     PORT=${PORT:-19100}
-    EXEC_START="/usr/local/bin/ai-flight-dashboard --data-dir /var/lib/ai-flight-dashboard --web --port ${PORT}"
+    EXEC_START="/usr/local/bin/token-ray --data-dir /var/lib/token-ray --web --port ${PORT}"
     echo -e "${GREEN}配置为: 主控服务端 (端口: ${PORT})${NC}"
 else
     HOSTNAME=$(hostname)
@@ -54,7 +54,7 @@ else
         echo -e "${RED}上报地址不能为空。${NC}"
         exit 1
     fi
-    EXEC_START="/usr/local/bin/ai-flight-dashboard --data-dir /var/lib/ai-flight-dashboard --device-id \"${DEVICE_ID}\" --forward-to \"${FORWARD_URL}\""
+    EXEC_START="/usr/local/bin/token-ray --data-dir /var/lib/token-ray --device-id \"${DEVICE_ID}\" --forward-to \"${FORWARD_URL}\""
     echo -e "${GREEN}配置为: 探针端 (设备名: ${DEVICE_ID}, 上报至: ${FORWARD_URL})${NC}"
 fi
 
@@ -62,19 +62,19 @@ fi
 echo -e "${YELLOW}3. 配置 Systemd 服务...${NC}"
 
 # 安全地写入 Token 到环境文件
-echo "DASHBOARD_TOKEN=\"${TOKEN}\"" > /etc/ai-flight-dashboard.env
-chmod 600 /etc/ai-flight-dashboard.env
+echo "DASHBOARD_TOKEN=\"${TOKEN}\"" > /etc/token-ray.env
+chmod 600 /etc/token-ray.env
 
-cat <<EOF > /etc/systemd/system/ai-flight-dashboard.service
+cat <<EOF > /etc/systemd/system/token-ray.service
 [Unit]
-Description=AI Flight Dashboard
+Description=Token Ray
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/var/lib/ai-flight-dashboard
-EnvironmentFile=/etc/ai-flight-dashboard.env
+WorkingDirectory=/var/lib/token-ray
+EnvironmentFile=/etc/token-ray.env
 ExecStart=${EXEC_START}
 Restart=on-failure
 RestartSec=5
@@ -83,16 +83,16 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-mkdir -p /var/lib/ai-flight-dashboard
+mkdir -p /var/lib/token-ray
 
 systemctl daemon-reload
-systemctl enable --now ai-flight-dashboard
+systemctl enable --now token-ray
 
 echo -e "${GREEN}=== 部署完成！===${NC}"
 echo -e "服务已后台运行并设置开机自启。"
 echo -e "你可以使用以下命令查看状态和日志："
-echo -e "  systemctl status ai-flight-dashboard"
-echo -e "  journalctl -fu ai-flight-dashboard"
+echo -e "  systemctl status token-ray"
+echo -e "  journalctl -fu token-ray"
 if [ "$MODE" == "1" ]; then
     echo -e "\n请在浏览器访问 http://<你的IP>:${PORT} 查看主控面板。"
 fi

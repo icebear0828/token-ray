@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ai-flight-dashboard/internal/db"
+	"token-ray/internal/db"
 )
 
 func TestDirCache(t *testing.T) {

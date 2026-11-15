@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/desktop"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/desktop"
+	"token-ray/internal/model"
+	"token-ray/internal/testutil"
 )
 
 func TestGetStatsFiltersBySource(t *testing.T) {

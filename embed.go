@@ -1,4 +1,4 @@
-package aiflightdashboard
+package tokenray
 
 import "embed"
 

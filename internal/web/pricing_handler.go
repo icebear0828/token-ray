@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"sort"
 
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/dashboard"
-	"ai-flight-dashboard/internal/db"
+	"token-ray/internal/calculator"
+	"token-ray/internal/config"
+	"token-ray/internal/dashboard"
+	"token-ray/internal/db"
 )
 
 type PricingEntry struct {

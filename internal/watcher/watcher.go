@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 
 	"github.com/fsnotify/fsnotify"
 )

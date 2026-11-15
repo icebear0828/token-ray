@@ -1,9 +1,9 @@
 package main
 
 import (
-	"ai-flight-dashboard/internal/applock"
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/db"
+	"token-ray/internal/applock"
+	"token-ray/internal/config"
+	"token-ray/internal/db"
 	"errors"
 	"fmt"
 	"log"
@@ -34,7 +34,7 @@ func acquireProcessLock(dataDir string, gui bool) *applock.Lock {
 			showAlreadyRunningMessage(dataDir)
 			os.Exit(0)
 		}
-		log.Fatalf("Another AI Flight Dashboard process is already using %s. Stop it before starting a second dashboard or running a repair/import/dedup command.", dataDir)
+		log.Fatalf("Another Token Ray process is already using %s. Stop it before starting a second dashboard or running a repair/import/dedup command.", dataDir)
 	}
 	log.Fatalf("Failed to acquire process lock %s: %v", lockPath, err)
 	return nil

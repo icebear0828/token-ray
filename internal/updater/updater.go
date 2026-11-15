@@ -250,10 +250,8 @@ func scoreExecutableEntry(lowerName string) int {
 	base := path.Base(lowerName)
 	score := 0
 	switch {
-	case base == "ai-flight-dashboard" || base == "ai-flight-dashboard.exe":
+	case base == "token-ray" || base == "token-ray.exe":
 		score += 100
-	case strings.HasSuffix(base, "dashboard"):
-		score += 20
 	}
 	if strings.Contains(lowerName, "contents/macos/") {
 		score += 50

@@ -1,7 +1,7 @@
 package db
 
 import (
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 	"database/sql"
 	"strings"
 	"time"

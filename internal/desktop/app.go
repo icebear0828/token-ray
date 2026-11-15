@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/dashboard"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/updater"
+	"token-ray/internal/calculator"
+	"token-ray/internal/config"
+	"token-ray/internal/dashboard"
+	"token-ray/internal/db"
+	"token-ray/internal/model"
+	"token-ray/internal/updater"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )

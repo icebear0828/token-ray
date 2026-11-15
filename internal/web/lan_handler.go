@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"ai-flight-dashboard/internal/dashboard"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/lan"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/dashboard"
+	"token-ray/internal/db"
+	"token-ray/internal/lan"
+	"token-ray/internal/model"
 )
 
 // NewLANHandler exposes only the endpoints needed by LAN peers.

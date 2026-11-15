@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/source"
 )
 
 const (
@@ -206,7 +206,7 @@ func (m *Manager) InstallURL(ctx context.Context, rawURL, wantSHA256 string) (Ma
 	if err != nil {
 		return Manifest{}, err
 	}
-	req.Header.Set("User-Agent", "AI-Flight-Dashboard-Plugin-Installer")
+	req.Header.Set("User-Agent", "Token-Ray-Plugin-Installer")
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {

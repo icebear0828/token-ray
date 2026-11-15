@@ -3,7 +3,7 @@ package sources
 import (
 	"testing"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 func TestGeminiParserFallbackUUIDIsStable(t *testing.T) {

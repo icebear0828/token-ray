@@ -1,4 +1,4 @@
-module ai-flight-dashboard
+module token-ray
 
 go 1.26.1
 

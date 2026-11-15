@@ -3,8 +3,8 @@ package web
 import (
 	"sync"
 
-	"ai-flight-dashboard/internal/lan"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/lan"
+	"token-ray/internal/model"
 )
 
 // LANController is the dashboard-facing control surface for LAN discovery.

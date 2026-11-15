@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/db"
+	"token-ray/internal/model"
 )
 
 func TestExportCSV(t *testing.T) {

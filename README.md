@@ -1,12 +1,12 @@
-# AI Flight Dashboard
+# Token Ray
 
 > 本地优先的 AI Token、成本和设备用量仪表盘，支持 Claude Code、Gemini CLI、Codex、Antigravity CLI、DeepSeek Harness 和 Pi Agent。
 
 [English](README.en.md)
 
-AI Flight Dashboard 是一个 Go + React + Wails 应用。它通过被动扫描本机 AI CLI 工具写入的日志和本地数据库，统计 Token、缓存命中、模型成本、项目归因和多设备用量。默认启动桌面 GUI，也可以作为 Web 面板、legacy TUI 或远程 forwarder 运行。
+Token Ray 是一个 Go + React + Wails 应用。它通过被动扫描本机 AI CLI 工具写入的日志和本地数据库，统计 Token、缓存命中、模型成本、项目归因和多设备用量。默认启动桌面 GUI，也可以作为 Web 面板、legacy TUI 或远程 forwarder 运行。
 
-它不需要改造 Claude Code、Gemini CLI、Codex、Antigravity CLI、DeepSeek Harness 或 Pi Agent，也不需要代理真实 API 流量。数据默认保存在本机 `~/.ai-flight-dashboard` 下的 SQLite 数据库中；局域网模式可在多台设备之间发现、同步和去重。
+它不需要改造 Claude Code、Gemini CLI、Codex、Antigravity CLI、DeepSeek Harness 或 Pi Agent，也不需要代理真实 API 流量。数据默认保存在本机 `~/.token-ray` 下的 SQLite 数据库中；局域网模式可在多台设备之间发现、同步和去重。
 
 ## 当前能力
 
@@ -26,7 +26,7 @@ AI Flight Dashboard 是一个 Go + React + Wails 应用。它通过被动扫描�
 
 ### 下载桌面版
 
-从 [GitHub Releases](https://github.com/icebear0828/token-ray/releases/latest) 下载对应平台的压缩包。macOS 首次启动时，如果系统拦截未签名应用，请右键 `AI Flight Dashboard.app` 选择“打开”。
+从 [GitHub Releases](https://github.com/icebear0828/token-ray/releases/latest) 下载对应平台的压缩包。macOS 首次启动时，如果系统拦截未签名应用，请右键 `Token Ray.app` 选择“打开”。
 
 ### 本地构建
 
@@ -78,14 +78,14 @@ DASHBOARD_TOKEN=your-token ./dashboard \
 默认数据目录：
 
 ```text
-~/.ai-flight-dashboard
+~/.token-ray
 ```
 
 可通过命令行或环境变量覆盖：
 
 ```bash
 ./dashboard --data-dir /path/to/data
-AI_FLIGHT_DASHBOARD_DATA_DIR=/path/to/data ./dashboard
+TOKEN_RAY_DATA_DIR=/path/to/data ./dashboard
 ```
 
 主要文件：

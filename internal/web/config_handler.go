@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"os"
 
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/config"
+	"token-ray/internal/watcher"
 )
 
 // configSavedHook, when set, is invoked after a successful PUT /api/config so

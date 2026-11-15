@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/dashboard"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/calculator"
+	"token-ray/internal/dashboard"
+	"token-ray/internal/db"
+	"token-ray/internal/model"
+	"token-ray/internal/watcher"
 )
 
 func handleStats(w http.ResponseWriter, r *http.Request, database *db.DB, calc *calculator.Calculator, wInst *watcher.Watcher, statsCache *dashboard.StatsCache) {

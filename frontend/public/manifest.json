@@ -1,6 +1,6 @@
 {
-  "name": "AI Flight Dashboard",
-  "short_name": "FlightDash",
+  "name": "Token Ray",
+  "short_name": "TokenRay",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

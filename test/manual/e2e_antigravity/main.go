@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"ai-flight-dashboard/internal/agyscanner"
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/agyscanner"
+	"token-ray/internal/calculator"
+	"token-ray/internal/db"
+	"token-ray/internal/source"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -24,7 +24,7 @@ func main() {
 	defer os.RemoveAll(tmpDir)
 
 	dbPath := filepath.Join(tmpDir, "usage.db")
-	origDBPath := filepath.Join(os.Getenv("HOME"), ".ai-flight-dashboard", "stats", "usage.db")
+	origDBPath := filepath.Join(os.Getenv("HOME"), ".token-ray", "stats", "usage.db")
 
 	// Copy existing db if available to test backfill on real historical DB
 	if origF, err := os.Open(origDBPath); err == nil {

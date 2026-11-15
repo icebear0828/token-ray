@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"ai-flight-dashboard/internal/plugin"
-	"ai-flight-dashboard/internal/source"
-	"ai-flight-dashboard/internal/web"
+	"token-ray/internal/plugin"
+	"token-ray/internal/source"
+	"token-ray/internal/web"
 )
 
 type fakeSources struct{}

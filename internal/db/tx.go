@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 // Tx is a write transaction. It exposes the persistence surface sources need

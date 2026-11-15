@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/source"
-	"ai-flight-dashboard/internal/testutil"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/calculator"
+	"token-ray/internal/db"
+	"token-ray/internal/model"
+	"token-ray/internal/source"
+	"token-ray/internal/testutil"
+	"token-ray/internal/watcher"
 )
 
 func newTestSink(t *testing.T, database *db.DB, calc *calculator.Calculator, deviceID string) (source.Sink, chan watcher.TokenUsage) {

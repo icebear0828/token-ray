@@ -4,7 +4,7 @@ import (
 	goruntime "runtime"
 	"testing"
 
-	"ai-flight-dashboard/internal/desktop"
+	"token-ray/internal/desktop"
 
 	"github.com/wailsapp/wails/v2/pkg/options"
 )
@@ -30,7 +30,7 @@ func TestConfigureGUIWindowLifecycleRestoresHiddenWindowOnSecondLaunch(t *testin
 	if appOptions.SingleInstanceLock == nil {
 		t.Fatal("expected single-instance lock to be configured")
 	}
-	if appOptions.SingleInstanceLock.UniqueId != "ai-flight-dashboard" {
+	if appOptions.SingleInstanceLock.UniqueId != "token-ray" {
 		t.Fatalf("unexpected single-instance ID: %q", appOptions.SingleInstanceLock.UniqueId)
 	}
 	if appOptions.SingleInstanceLock.OnSecondInstanceLaunch == nil {

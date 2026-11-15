@@ -238,7 +238,7 @@ export function App() {
   const handleLanguageSwitch = () => {
     const next = i18n.language === "zh" ? "en" : "zh";
     i18n.changeLanguage(next);
-    localStorage.setItem("ai-flight-dashboard_lang", next);
+    localStorage.setItem("token-ray_lang", next);
   };
 
   // Active time window stats directly from backend periods array

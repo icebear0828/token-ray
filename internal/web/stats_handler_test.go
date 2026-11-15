@@ -1,9 +1,9 @@
 package web_test
 
 import (
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/testutil"
-	"ai-flight-dashboard/internal/web"
+	"token-ray/internal/model"
+	"token-ray/internal/testutil"
+	"token-ray/internal/web"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
