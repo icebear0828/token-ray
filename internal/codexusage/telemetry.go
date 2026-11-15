@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/model"
+	"token-ray/internal/watcher"
 )
 
 var metricPattern = regexp.MustCompile(`([A-Za-z_.]+)=("[^"]*"|\S+)`)

@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"ai-flight-dashboard/internal/antigravity"
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/db"
+	"token-ray/internal/antigravity"
+	"token-ray/internal/calculator"
+	"token-ray/internal/config"
+	"token-ray/internal/db"
 )
 
 const maxStatuslinePayloadBytes = 1024 * 1024

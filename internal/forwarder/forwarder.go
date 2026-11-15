@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 // Forwarder listens to a usage channel and forwards events to a remote HTTP endpoint.

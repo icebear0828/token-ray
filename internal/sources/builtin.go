@@ -8,14 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/agyscanner"
-	"ai-flight-dashboard/internal/codexusage"
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/dsh"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/scanner"
-	"ai-flight-dashboard/internal/source"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/agyscanner"
+	"token-ray/internal/codexusage"
+	"token-ray/internal/config"
+	"token-ray/internal/dsh"
+	"token-ray/internal/model"
+	"token-ray/internal/scanner"
+	"token-ray/internal/source"
+	"token-ray/internal/watcher"
 )
 
 const fullScanInterval = time.Minute

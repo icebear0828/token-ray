@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/dashboard"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/dashboard"
+	"token-ray/internal/model"
 )
 
 func TestStatsCacheReusesFreshValueAndReturnsCopies(t *testing.T) {

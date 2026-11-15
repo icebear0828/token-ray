@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"ai-flight-dashboard/internal/db"
+	"token-ray/internal/db"
 )
 
 // AlertLevel indicates the severity of a budget status.

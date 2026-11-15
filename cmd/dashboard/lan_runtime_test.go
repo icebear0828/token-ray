@@ -1,11 +1,11 @@
 package main
 
 import (
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/lan"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/config"
+	"token-ray/internal/db"
+	"token-ray/internal/lan"
+	"token-ray/internal/model"
+	"token-ray/internal/testutil"
 	"context"
 	"encoding/json"
 	"net/http"

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/updater"
+	"token-ray/internal/updater"
 )
 
 const updateCheckTTL = 10 * time.Minute

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/lan"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/lan"
+	"token-ray/internal/model"
 )
 
 func TestNew(t *testing.T) {

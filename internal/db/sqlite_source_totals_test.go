@@ -1,8 +1,8 @@
 package db_test
 
 import (
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/db"
+	"token-ray/internal/model"
 	"path/filepath"
 	"testing"
 	"time"

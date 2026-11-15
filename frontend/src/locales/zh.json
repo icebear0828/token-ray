@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "AI Flight Dashboard",
+    "title": "Token Ray",
     "subtitle": "被动扫描本机 AI CLI 日志 · 零侵入 · 数据全留本机",
     "badge_local": "LOCAL-ONLY",
     "scanning": "SCANNING · 5S",
@@ -112,7 +112,7 @@
     "tokens_24h": "24H TOKEN",
     "tokens_total": "累计 TOKEN",
     "cost_total": "累计成本",
-    "no_peers": "暂未发现局域网内其他运行 AI Flight Dashboard 的设备",
+    "no_peers": "暂未发现局域网内其他运行 Token Ray 的设备",
     "no_peers_hint": "确保同局域网设备开启 LAN 发现且防火墙放行局域网端口"
   },
   "devices": {

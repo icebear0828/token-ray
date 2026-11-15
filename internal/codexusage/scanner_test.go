@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/codexusage"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/codexusage"
+	"token-ray/internal/testutil"
 
 	_ "github.com/mattn/go-sqlite3"
 )

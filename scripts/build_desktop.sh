@@ -2,7 +2,7 @@
 
 set -e
 
-echo "🖥️  Building AI Flight Dashboard Desktop App..."
+echo "🖥️  Building Token Ray Desktop App..."
 
 # 1. Build frontend
 echo "📦 Building frontend..."
@@ -19,15 +19,15 @@ if [[ "$(uname)" == "Darwin" ]]; then
     export CGO_LDFLAGS="-framework UniformTypeIdentifiers"
 fi
 
-go build -tags desktop,production -ldflags "-w -s" -o build/bin/ai-flight-dashboard ./cmd/dashboard
+go build -tags desktop,production -ldflags "-w -s" -o build/bin/token-ray ./cmd/dashboard
 
 echo ""
-echo "✅ Desktop binary built at: build/bin/ai-flight-dashboard"
+echo "✅ Desktop binary built at: build/bin/token-ray"
 echo ""
 echo "Usage:"
-echo "  ./build/bin/ai-flight-dashboard          # Native desktop window"
-echo "  ./build/bin/ai-flight-dashboard --web    # Web dashboard mode"
-echo "  ./build/bin/ai-flight-dashboard --tui    # TUI terminal mode"
+echo "  ./build/bin/token-ray          # Native desktop window"
+echo "  ./build/bin/token-ray --web    # Web dashboard mode"
+echo "  ./build/bin/token-ray --tui    # TUI terminal mode"
 
 # Platform-specific packaging
 if [[ "$(uname)" == "Darwin" ]]; then
@@ -37,11 +37,11 @@ if [[ "$(uname)" == "Darwin" ]]; then
     wails build -platform darwin/arm64 -skipbindings > /dev/null 2>&1 || true
     
     # 2. Overwrite the dummy executable with the correctly compiled binary
-    cp build/bin/ai-flight-dashboard "build/bin/AI Flight Dashboard.app/Contents/MacOS/ai-flight-dashboard"
+    cp build/bin/token-ray "build/bin/Token Ray.app/Contents/MacOS/token-ray"
     
     # 3. Resign the app bundle to prevent macOS Gatekeeper from rejecting it
-    codesign --force --deep --sign - "build/bin/AI Flight Dashboard.app"
+    codesign --force --deep --sign - "build/bin/Token Ray.app"
     
-    echo "✅ macOS .app bundle created at: build/bin/AI Flight Dashboard.app"
+    echo "✅ macOS .app bundle created at: build/bin/Token Ray.app"
     echo "   You can now double-click it to run the application!"
 fi

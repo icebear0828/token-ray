@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/watcher"
 )
 
 func TestWatcher(t *testing.T) {

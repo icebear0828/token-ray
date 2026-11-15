@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/config"
+	"token-ray/internal/source"
 )
 
 // DirWatcher is the subset of watcher.Watcher used to keep filesystem

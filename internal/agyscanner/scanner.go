@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/antigravity"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/source"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/antigravity"
+	"token-ray/internal/model"
+	"token-ray/internal/source"
+	"token-ray/internal/watcher"
 )
 
 const (

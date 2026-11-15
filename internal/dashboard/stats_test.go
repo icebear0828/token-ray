@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/dashboard"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/dashboard"
+	"token-ray/internal/model"
+	"token-ray/internal/testutil"
 )
 
 func TestBuildStatsIncludesCacheHitRates(t *testing.T) {

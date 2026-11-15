@@ -12,9 +12,9 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/source"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/model"
+	"token-ray/internal/source"
+	"token-ray/internal/testutil"
 )
 
 const (

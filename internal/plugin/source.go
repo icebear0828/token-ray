@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"ai-flight-dashboard/internal/scanner"
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/scanner"
+	"token-ray/internal/source"
 )
 
 // Source adapts a declarative plugin manifest to the source.Source contract.

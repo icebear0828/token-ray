@@ -1,12 +1,12 @@
-# AI Flight Dashboard
+# Token Ray
 
 > Local-first AI token, cost, and device usage dashboard for Claude Code, Gemini CLI, Codex, Antigravity CLI, DeepSeek Harness, and Pi Agent.
 
 [中文](README.md)
 
-AI Flight Dashboard is a Go + React + Wails app. It passively reads local AI CLI logs and databases to track tokens, cache hits, model costs, project attribution, and multi-device usage. It starts as a native desktop GUI by default, and can also run as a Web dashboard, legacy TUI, or remote forwarder.
+Token Ray is a Go + React + Wails app. It passively reads local AI CLI logs and databases to track tokens, cache hits, model costs, project attribution, and multi-device usage. It starts as a native desktop GUI by default, and can also run as a Web dashboard, legacy TUI, or remote forwarder.
 
-It does not require patching Claude Code, Gemini CLI, Codex, Antigravity CLI, DeepSeek Harness, or Pi Agent, and it does not proxy real API traffic. Data is stored locally in SQLite under `~/.ai-flight-dashboard` by default. LAN mode can discover, sync, and deduplicate usage across nearby machines.
+It does not require patching Claude Code, Gemini CLI, Codex, Antigravity CLI, DeepSeek Harness, or Pi Agent, and it does not proxy real API traffic. Data is stored locally in SQLite under `~/.token-ray` by default. LAN mode can discover, sync, and deduplicate usage across nearby machines.
 
 ## Capabilities
 
@@ -26,7 +26,7 @@ It does not require patching Claude Code, Gemini CLI, Codex, Antigravity CLI, De
 
 ### Download The Desktop App
 
-Download the package for your platform from [GitHub Releases](https://github.com/icebear0828/token-ray/releases/latest). On macOS, if Gatekeeper blocks the first launch, right-click `AI Flight Dashboard.app` and choose "Open".
+Download the package for your platform from [GitHub Releases](https://github.com/icebear0828/token-ray/releases/latest). On macOS, if Gatekeeper blocks the first launch, right-click `Token Ray.app` and choose "Open".
 
 ### Build Locally
 
@@ -78,14 +78,14 @@ The default sync mode is `poll`: the app scans history on startup, then quickly 
 Default data directory:
 
 ```text
-~/.ai-flight-dashboard
+~/.token-ray
 ```
 
 Override it with a flag or environment variable:
 
 ```bash
 ./dashboard --data-dir /path/to/data
-AI_FLIGHT_DASHBOARD_DATA_DIR=/path/to/data ./dashboard
+TOKEN_RAY_DATA_DIR=/path/to/data ./dashboard
 ```
 
 Main files:

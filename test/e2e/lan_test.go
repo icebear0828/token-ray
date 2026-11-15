@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/lan"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/testutil"
-	"ai-flight-dashboard/internal/web"
+	"token-ray/internal/lan"
+	"token-ray/internal/model"
+	"token-ray/internal/testutil"
+	"token-ray/internal/web"
 )
 
 var emptyFS embed.FS

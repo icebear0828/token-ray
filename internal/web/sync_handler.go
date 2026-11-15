@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"ai-flight-dashboard/internal/db"
+	"token-ray/internal/db"
 )
 
 const (

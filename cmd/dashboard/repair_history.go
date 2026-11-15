@@ -1,13 +1,13 @@
 package main
 
 import (
-	"ai-flight-dashboard/internal/agyscanner"
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/codexusage"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/scanner"
-	"ai-flight-dashboard/internal/source"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/agyscanner"
+	"token-ray/internal/calculator"
+	"token-ray/internal/codexusage"
+	"token-ray/internal/db"
+	"token-ray/internal/scanner"
+	"token-ray/internal/source"
+	"token-ray/internal/watcher"
 	"bufio"
 	"fmt"
 	"io"

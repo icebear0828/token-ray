@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/scanner"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/scanner"
+	"token-ray/internal/testutil"
 )
 
 func TestScanAll_FullScan(t *testing.T) {

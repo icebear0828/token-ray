@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/model"
+	"token-ray/internal/source"
 )
 
 const sourceName = "DeepSeek Harness"

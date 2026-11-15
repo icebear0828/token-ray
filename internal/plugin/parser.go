@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/model"
+	"token-ray/internal/watcher"
 )
 
 // parser maps one JSON line onto TokenUsage using a declarative manifest.

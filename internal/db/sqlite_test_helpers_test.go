@@ -1,7 +1,7 @@
 package db_test
 
 import (
-	"ai-flight-dashboard/internal/db"
+	"token-ray/internal/db"
 	"testing"
 )
 

@@ -1,7 +1,7 @@
-# AI Flight Dashboard (AI 飞行仪表盘) - PRD
+# Token Ray - PRD
 
 ## 1. 系统愿景 (System Vision)
-打造一个极致轻量、零依赖的“AI 飞行仪表盘”命令行工具（基于 Go 语言构建）。
+打造一个极致轻量、零依赖的“Token Ray”命令行工具（基于 Go 语言构建）。
 利用“被动雷达监听”技术，自动识别当前活跃的 AI CLI 工具（Gemini, Claude Code, Aider/Cursor 等），在终端中提供丝滑的实时消耗反馈（HUD 模式），并能在终端内直接切换到基于 SQLite 的全量资产分析视图（Dashboard 模式）。
 
 ## 2. 技术栈选型 (Technology Stack)
@@ -30,7 +30,7 @@
 ## 4. 架构与目录组织
 
 ```text
-/Users/c/wiki/token/ai-flight-dashboard/
+/Users/c/wiki/token/token-ray/
 ├── cmd/
 │   └── dashboard/
 │       └── main.go           # CLI 入口

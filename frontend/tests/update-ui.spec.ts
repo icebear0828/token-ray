@@ -74,7 +74,7 @@ test('settings shows an available update, release notes, and applies it', async 
       latest_version: 'v1.3.0',
       has_update: true,
       release_notes: '## Changes\n- Faster updates',
-      asset_name: 'ai-flight-dashboard-linux.tar.gz',
+      asset_name: 'token-ray-linux.tar.gz',
       download_url: 'https://example.com/asset',
     })
   );
@@ -102,7 +102,7 @@ test('settings shows an available update, release notes, and applies it', async 
   await expect(page.getByText(/发现新版本|New Version Available/)).toBeVisible();
   await expect(page.getByText('v1.3.0', { exact: true })).toBeVisible();
   await expect(page.getByText(/Faster updates/)).toBeVisible();
-  await expect(page.getByText(/ai-flight-dashboard-linux\.tar\.gz/)).toBeVisible();
+  await expect(page.getByText(/token-ray-linux\.tar\.gz/)).toBeVisible();
 
   await page.getByRole('button', { name: /立即更新|APPLY UPDATE/ }).click();
   await expect(page.getByText(/Successfully updated to v1\.3\.0/)).toBeVisible();
@@ -147,7 +147,7 @@ test('apply failure shows the server error message', async ({ page }) => {
       current_version: 'v1.2.3',
       latest_version: 'v1.3.0',
       has_update: true,
-      asset_name: 'ai-flight-dashboard-linux.tar.gz',
+      asset_name: 'token-ray-linux.tar.gz',
     })
   );
   await page.route('**/api/system/update/apply', (route) =>
@@ -182,7 +182,7 @@ test('header banner announces a new version and opens settings', async ({ page }
       current_version: 'v1.2.3',
       latest_version: 'v1.3.0',
       has_update: true,
-      asset_name: 'ai-flight-dashboard-linux.tar.gz',
+      asset_name: 'token-ray-linux.tar.gz',
     })
   );
 

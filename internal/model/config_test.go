@@ -3,7 +3,7 @@ package model_test
 import (
 	"testing"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 func TestBillingModeValidation(t *testing.T) {

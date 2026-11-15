@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/calculator"
+	"token-ray/internal/db"
+	"token-ray/internal/source"
 )
 
 // PricingJSON is a minimal pricing table covering the models used in tests.

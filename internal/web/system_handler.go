@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"ai-flight-dashboard/internal/config"
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/config"
+	"token-ray/internal/model"
 )
 
 func handleSystemLogs(w http.ResponseWriter, r *http.Request) {

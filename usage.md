@@ -1,4 +1,4 @@
-# AI Flight Dashboard 使用手册
+# Token Ray 使用手册
 
 本文档面向当前项目根目录公开入口。`docs/` 下的文档可能包含历史设计、路线图和内部说明，使用方式以本文档和 `README.md` 为准。
 
@@ -6,7 +6,7 @@
 
 ### macOS 桌面版
 
-从 GitHub Releases 下载对应的 macOS 包，解压后首次启动请右键 `AI Flight Dashboard.app`，选择“打开”。
+从 GitHub Releases 下载对应的 macOS 包，解压后首次启动请右键 `Token Ray.app`，选择“打开”。
 
 ### 服务器部署
 
@@ -25,8 +25,8 @@ sudo ./scripts/deploy.sh
 部署后常用命令：
 
 ```bash
-systemctl status ai-flight-dashboard
-journalctl -fu ai-flight-dashboard
+systemctl status token-ray
+journalctl -fu token-ray
 ```
 
 ## 构建
@@ -92,7 +92,7 @@ DASHBOARD_TOKEN=your-token ./dashboard \
 | `--tui` | 启动 legacy TUI |
 | `--port`, `-p` | Web 端口，默认 `19100` |
 | `--device-id` | 当前设备 ID，默认主机名 |
-| `--data-dir` | 数据库和配置目录，默认 `~/.ai-flight-dashboard`；便携模式请显式传目录 |
+| `--data-dir` | 数据库和配置目录，默认 `~/.token-ray`；便携模式请显式传目录 |
 | `--token` | API、forwarder、LAN 同步认证 token |
 | `--forward-to` | 探针上报目标，例如 `http://host:19100/api/track` |
 | `--lan` | 启用 LAN 发现和广播，默认开启 |
@@ -110,7 +110,7 @@ export DASHBOARD_TOKEN=your-token
 `--data-dir` 也可以通过环境变量提供，命令行参数优先级更高：
 
 ```bash
-export AI_FLIGHT_DASHBOARD_DATA_DIR="$HOME/.ai-flight-dashboard"
+export TOKEN_RAY_DATA_DIR="$HOME/.token-ray"
 ```
 
 ## 捕获来源
@@ -129,9 +129,9 @@ GUI 设置页可以配置额外监听目录。新增或移除目录后保存配�
 
 默认数据目录：
 
-- 默认使用 `~/.ai-flight-dashboard`。
+- 默认使用 `~/.token-ray`。
 - 显式传 `--data-dir` 时使用指定目录。
-- 未传 `--data-dir` 时，可用 `AI_FLIGHT_DASHBOARD_DATA_DIR` 覆盖默认目录。
+- 未传 `--data-dir` 时，可用 `TOKEN_RAY_DATA_DIR` 覆盖默认目录。
 
 主要文件：
 
@@ -175,7 +175,7 @@ GET  /api/sync/pull
 
 ```bash
 ./dashboard repair-history
-./dashboard --data-dir ~/.ai-flight-dashboard repair-history
+./dashboard --data-dir ~/.token-ray repair-history
 ```
 
 `repair-history` 会重新扫描本机可访问的 Claude Code、Gemini CLI 和 Codex 历史日志。它会重置可重放文件的扫描 offset，并将可从磁盘重放的本机 Gemini 旧记录标记为 superseded，不会物理删除记录，也不会影响 LAN 或远端设备记录。

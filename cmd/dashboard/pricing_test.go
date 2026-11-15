@@ -1,7 +1,7 @@
 package main
 
 import (
-	"ai-flight-dashboard/internal/calculator"
+	"token-ray/internal/calculator"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -269,6 +269,7 @@ func TestDynamicPricingURLsUseCurrentRepository(t *testing.T) {
 		t.Fatal("expected at least one dynamic pricing URL")
 	}
 	for _, url := range pricingTableURLs {
+		// The pre-rename repository slug must never come back.
 		if strings.Contains(url, "githubusercontent.com/icebear0828/ai-flight-dashboard/") ||
 			strings.Contains(url, "github.com/icebear0828/ai-flight-dashboard/") {
 			t.Fatalf("dynamic pricing URL still points to retired repository: %s", url)

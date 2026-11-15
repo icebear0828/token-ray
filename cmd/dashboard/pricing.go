@@ -1,7 +1,7 @@
 package main
 
 import (
-	"ai-flight-dashboard/internal/calculator"
+	"token-ray/internal/calculator"
 	_ "embed"
 	"encoding/json"
 	"fmt"

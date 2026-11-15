@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/alert"
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/alert"
+	"token-ray/internal/model"
+	"token-ray/internal/testutil"
 )
 
 var pacificTime = time.FixedZone("PDT", -7*60*60)

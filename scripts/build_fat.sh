@@ -2,7 +2,7 @@
 
 set -e
 
-echo "🔨 Building AI Flight Dashboard Fat Server..."
+echo "🔨 Building Token Ray Fat Server..."
 
 # 1. Empty the embed directory to prevent recursive bloat during build
 mkdir -p dist-bin

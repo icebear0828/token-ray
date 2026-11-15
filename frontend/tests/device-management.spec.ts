@@ -53,7 +53,7 @@ test('device drawer can create edit clear and soft-delete devices', async ({ pag
   });
   await page.route('**/api/config', (route) => fulfillConfig(route));
   await page.route('**/api/system/logs', async (route) => {
-    await fulfillJSON(route, { path: '/tmp/ai-flight-dashboard/stats' });
+    await fulfillJSON(route, { path: '/tmp/token-ray/stats' });
   });
   await page.route('**/api/devices**', async (route) => {
     if (route.request().method() === 'DELETE') {
@@ -155,7 +155,7 @@ test('config drawer can add an extra watch directory when backend returns null d
     await fulfillJSON(route, []);
   });
   await page.route('**/api/system/logs', async (route) => {
-    await fulfillJSON(route, { path: '/tmp/ai-flight-dashboard/stats' });
+    await fulfillJSON(route, { path: '/tmp/token-ray/stats' });
   });
   await page.route('**/api/config', async (route) => {
     if (route.request().method() === 'PUT') {

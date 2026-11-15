@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"ai-flight-dashboard/internal/source"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/source"
+	"token-ray/internal/testutil"
 )
 
 func TestSourceScanEmitsUsage(t *testing.T) {

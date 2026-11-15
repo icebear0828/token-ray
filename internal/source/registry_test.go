@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/source"
 )
 
 type fakeSource struct {

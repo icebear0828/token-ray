@@ -20,9 +20,9 @@ type AppConfig struct {
 // customDir allows overriding the data directory at runtime.
 var customDir string
 
-const DataDirEnv = "AI_FLIGHT_DASHBOARD_DATA_DIR"
+const DataDirEnv = "TOKEN_RAY_DATA_DIR"
 
-// SetDataDir overrides the default ~/.ai-flight-dashboard data directory.
+// SetDataDir overrides the default ~/.token-ray data directory.
 func SetDataDir(dir string) {
 	customDir = dir
 }
@@ -37,7 +37,7 @@ func GetDataDir() string {
 	}
 	home, err := os.UserHomeDir()
 	if err == nil && home != "" {
-		dir := filepath.Join(home, ".ai-flight-dashboard")
+		dir := filepath.Join(home, ".token-ray")
 		os.MkdirAll(dir, 0755)
 		return dir
 	}

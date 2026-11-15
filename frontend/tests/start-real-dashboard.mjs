@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
-const dataDir = path.join(os.tmpdir(), 'ai-flight-dashboard-playwright');
-const goCache = path.join(os.tmpdir(), 'ai-flight-dashboard-go-cache');
+const dataDir = path.join(os.tmpdir(), 'token-ray-playwright');
+const goCache = path.join(os.tmpdir(), 'token-ray-go-cache');
 
 fs.rmSync(dataDir, { recursive: true, force: true });
 fs.mkdirSync(dataDir, { recursive: true });

@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "AI Flight Dashboard",
+    "title": "Token Ray",
     "subtitle": "Passive Local AI CLI Log Scanner · Zero Proxy · 100% On-Device",
     "badge_local": "LOCAL-ONLY",
     "scanning": "SCANNING · 5S",
@@ -112,7 +112,7 @@
     "tokens_24h": "24H TOKENS",
     "tokens_total": "TOTAL TOKENS",
     "cost_total": "TOTAL COST",
-    "no_peers": "No other AI Flight Dashboard instances detected on local network",
+    "no_peers": "No other Token Ray instances detected on local network",
     "no_peers_hint": "Ensure peers on the same subnet have LAN discovery enabled"
   },
   "devices": {

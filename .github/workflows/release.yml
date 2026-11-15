@@ -85,19 +85,19 @@ jobs:
           cd cmd/dashboard
           wails build -platform darwin/arm64 -clean
           mkdir -p ../../build/bin
-          mv "build/bin/AI Flight Dashboard.app" "../../build/bin/AI Flight Dashboard.app"
+          mv "build/bin/Token Ray.app" "../../build/bin/Token Ray.app"
           cd ../../build/bin
-          tar -czvf ai-flight-dashboard-macos-m-series.tar.gz "AI Flight Dashboard.app"
-          rm -rf "AI Flight Dashboard.app"
+          tar -czvf token-ray-macos-m-series.tar.gz "Token Ray.app"
+          rm -rf "Token Ray.app"
       - name: Build macOS Intel
         run: |
           cd cmd/dashboard
           wails build -platform darwin/amd64 -clean
           mkdir -p ../../build/bin
-          mv "build/bin/AI Flight Dashboard.app" "../../build/bin/AI Flight Dashboard.app"
+          mv "build/bin/Token Ray.app" "../../build/bin/Token Ray.app"
           cd ../../build/bin
-          tar -czvf ai-flight-dashboard-macos-intel.tar.gz "AI Flight Dashboard.app"
-          rm -rf "AI Flight Dashboard.app"
+          tar -czvf token-ray-macos-intel.tar.gz "Token Ray.app"
+          rm -rf "Token Ray.app"
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
@@ -130,15 +130,15 @@ jobs:
           cd cmd/dashboard
           wails build -platform windows/amd64 -clean
           mkdir -p ../../build/bin
-          mv "build/bin/ai-flight-dashboard.exe" "../../build/bin/"
+          mv "build/bin/token-ray.exe" "../../build/bin/"
       - name: Archive App
         run: |
           cd build/bin
-          Compress-Archive -Path "ai-flight-dashboard.exe" -DestinationPath ai-flight-dashboard-windows.zip
+          Compress-Archive -Path "token-ray.exe" -DestinationPath token-ray-windows.zip
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: build/bin/ai-flight-dashboard-windows.zip
+          files: build/bin/token-ray-windows.zip
 
   build-linux:
     name: Build Linux
@@ -171,15 +171,15 @@ jobs:
           cd cmd/dashboard
           wails build -platform linux/amd64 -clean
           mkdir -p ../../build/bin
-          mv "build/bin/ai-flight-dashboard" "../../build/bin/"
+          mv "build/bin/token-ray" "../../build/bin/"
       - name: Archive App
         run: |
           cd build/bin
-          tar -czvf ai-flight-dashboard-linux.tar.gz ai-flight-dashboard
+          tar -czvf token-ray-linux.tar.gz token-ray
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: build/bin/ai-flight-dashboard-linux.tar.gz
+          files: build/bin/token-ray-linux.tar.gz
 
   update-release-notes:
     name: Update Release Notes

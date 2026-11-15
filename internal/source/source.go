@@ -6,7 +6,7 @@ package source
 import (
 	"context"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 // Descriptor describes a source for the registry and the UI.

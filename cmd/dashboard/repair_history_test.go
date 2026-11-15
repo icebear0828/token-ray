@@ -1,8 +1,8 @@
 package main
 
 import (
-	"ai-flight-dashboard/internal/model"
-	"ai-flight-dashboard/internal/testutil"
+	"token-ray/internal/model"
+	"token-ray/internal/testutil"
 	"os"
 	"path/filepath"
 	"reflect"

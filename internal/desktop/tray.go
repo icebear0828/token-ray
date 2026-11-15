@@ -49,11 +49,11 @@ func (t *Tray) Stop() {
 
 func (t *Tray) onReady() {
 	systray.SetIcon(icon.Data)
-	systray.SetTitle("AI Flight Dashboard")
-	systray.SetTooltip("AI Flight Dashboard")
+	systray.SetTitle("Token Ray")
+	systray.SetTooltip("Token Ray")
 
 	show := systray.AddMenuItem("Show Dashboard", "Open the dashboard window")
-	quit := systray.AddMenuItem("Quit", "Quit AI Flight Dashboard")
+	quit := systray.AddMenuItem("Quit", "Quit Token Ray")
 	show.Click(func() { t.app.ShowWindow() })
 	quit.Click(func() { t.app.Quit() })
 

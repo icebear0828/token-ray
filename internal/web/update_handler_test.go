@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"ai-flight-dashboard/internal/testutil"
-	"ai-flight-dashboard/internal/updater"
-	"ai-flight-dashboard/internal/web"
+	"token-ray/internal/testutil"
+	"token-ray/internal/updater"
+	"token-ray/internal/web"
 )
 
 func TestHandleSystemVersion(t *testing.T) {
@@ -47,7 +47,7 @@ func TestHandleUpdateCheck_HasUpdate(t *testing.T) {
 		Name:    "v9.9.9",
 		Body:    "Major release",
 		Assets: []updater.Asset{
-			{Name: "ai-flight-dashboard-macos-m-series.tar.gz", URL: "https://example.com/asset"},
+			{Name: "token-ray-macos-m-series.tar.gz", URL: "https://example.com/asset"},
 		},
 	}
 

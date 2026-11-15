@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"testing"
 
-	"ai-flight-dashboard/internal/updater"
+	"token-ray/internal/updater"
 )
 
 func TestCheckForUpdates_SemanticComparison(t *testing.T) {
@@ -70,7 +70,7 @@ func TestCheckForUpdates_HTTPClient(t *testing.T) {
 		Name:    "v1.9.0 Release",
 		Body:    "## Highlights\n- Automated updates",
 		Assets: []updater.Asset{
-			{Name: "ai-flight-dashboard-macos-m-series.tar.gz", URL: "https://example.com/mac"},
+			{Name: "token-ray-macos-m-series.tar.gz", URL: "https://example.com/mac"},
 		},
 	}
 
@@ -113,34 +113,34 @@ func TestCheckForUpdates_HTTPClient(t *testing.T) {
 
 func TestMatchAsset(t *testing.T) {
 	assets := []updater.Asset{
-		{Name: "ai-flight-dashboard-linux.tar.gz", URL: "https://example.com/linux-tar"},
-		{Name: "ai-flight-dashboard-macos-m-series.tar.gz", URL: "https://example.com/mac-arm64"},
-		{Name: "ai-flight-dashboard-macos-intel.tar.gz", URL: "https://example.com/mac-amd64"},
-		{Name: "ai-flight-dashboard-windows.zip", URL: "https://example.com/win-zip"},
-		{Name: "ai-flight-dashboard-linux-amd64", URL: "https://example.com/linux-bin"},
+		{Name: "token-ray-linux.tar.gz", URL: "https://example.com/linux-tar"},
+		{Name: "token-ray-macos-m-series.tar.gz", URL: "https://example.com/mac-arm64"},
+		{Name: "token-ray-macos-intel.tar.gz", URL: "https://example.com/mac-amd64"},
+		{Name: "token-ray-windows.zip", URL: "https://example.com/win-zip"},
+		{Name: "token-ray-linux-amd64", URL: "https://example.com/linux-bin"},
 	}
 
 	// For linux amd64, prefer raw binary if present
 	linuxMatch := updater.MatchAsset(assets, "linux", "amd64")
-	if linuxMatch == nil || linuxMatch.Name != "ai-flight-dashboard-linux-amd64" {
+	if linuxMatch == nil || linuxMatch.Name != "token-ray-linux-amd64" {
 		t.Fatalf("expected raw binary match for linux amd64, got %+v", linuxMatch)
 	}
 
 	// For darwin arm64, match macos-m-series.tar.gz
 	macArmMatch := updater.MatchAsset(assets, "darwin", "arm64")
-	if macArmMatch == nil || macArmMatch.Name != "ai-flight-dashboard-macos-m-series.tar.gz" {
+	if macArmMatch == nil || macArmMatch.Name != "token-ray-macos-m-series.tar.gz" {
 		t.Fatalf("expected macos-m-series match for darwin arm64, got %+v", macArmMatch)
 	}
 
 	// For darwin amd64, match macos-intel.tar.gz
 	macAmdMatch := updater.MatchAsset(assets, "darwin", "amd64")
-	if macAmdMatch == nil || macAmdMatch.Name != "ai-flight-dashboard-macos-intel.tar.gz" {
+	if macAmdMatch == nil || macAmdMatch.Name != "token-ray-macos-intel.tar.gz" {
 		t.Fatalf("expected macos-intel match for darwin amd64, got %+v", macAmdMatch)
 	}
 
 	// For windows amd64, match windows.zip
 	winMatch := updater.MatchAsset(assets, "windows", "amd64")
-	if winMatch == nil || winMatch.Name != "ai-flight-dashboard-windows.zip" {
+	if winMatch == nil || winMatch.Name != "token-ray-windows.zip" {
 		t.Fatalf("expected windows.zip match for windows amd64, got %+v", winMatch)
 	}
 
@@ -171,7 +171,7 @@ func TestExtractBinary_TarGz(t *testing.T) {
 
 	// Add target binary in macOS App bundle
 	_ = tw.WriteHeader(&tar.Header{
-		Name:     "AI Flight Dashboard.app/Contents/MacOS/ai-flight-dashboard",
+		Name:     "Token Ray.app/Contents/MacOS/token-ray",
 		Mode:     0755,
 		Size:     int64(len(expectedContent)),
 		Typeflag: tar.TypeReg,
@@ -181,7 +181,7 @@ func TestExtractBinary_TarGz(t *testing.T) {
 	_ = tw.Close()
 	_ = gw.Close()
 
-	extracted, err := updater.ExtractBinaryFromArchive(&buf, "ai-flight-dashboard-macos-m-series.tar.gz")
+	extracted, err := updater.ExtractBinaryFromArchive(&buf, "token-ray-macos-m-series.tar.gz")
 	if err != nil {
 		t.Fatalf("failed to extract from tar.gz: %v", err)
 	}
@@ -207,12 +207,12 @@ func TestExtractBinary_Zip(t *testing.T) {
 	_, _ = licW.Write([]byte("MIT License"))
 
 	// Add executable
-	exeW, _ := zw.Create("ai-flight-dashboard.exe")
+	exeW, _ := zw.Create("token-ray.exe")
 	_, _ = exeW.Write(expectedContent)
 
 	_ = zw.Close()
 
-	extracted, err := updater.ExtractBinaryFromArchive(&buf, "ai-flight-dashboard-windows.zip")
+	extracted, err := updater.ExtractBinaryFromArchive(&buf, "token-ray-windows.zip")
 	if err != nil {
 		t.Fatalf("failed to extract from zip: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestExtractBinary_RawBinary(t *testing.T) {
 	rawContent := []byte("raw executable bytes")
 	buf := bytes.NewReader(rawContent)
 
-	extracted, err := updater.ExtractBinaryFromArchive(buf, "ai-flight-dashboard-darwin-arm64")
+	extracted, err := updater.ExtractBinaryFromArchive(buf, "token-ray-darwin-arm64")
 	if err != nil {
 		t.Fatalf("failed for raw binary: %v", err)
 	}
@@ -248,10 +248,10 @@ func TestExtractBinary_RawBinary(t *testing.T) {
 
 func TestCurrentRuntimeAssetMatching(t *testing.T) {
 	assets := []updater.Asset{
-		{Name: "ai-flight-dashboard-linux.tar.gz", URL: "https://example.com/linux"},
-		{Name: "ai-flight-dashboard-macos-m-series.tar.gz", URL: "https://example.com/mac-m"},
-		{Name: "ai-flight-dashboard-macos-intel.tar.gz", URL: "https://example.com/mac-intel"},
-		{Name: "ai-flight-dashboard-windows.zip", URL: "https://example.com/win"},
+		{Name: "token-ray-linux.tar.gz", URL: "https://example.com/linux"},
+		{Name: "token-ray-macos-m-series.tar.gz", URL: "https://example.com/mac-m"},
+		{Name: "token-ray-macos-intel.tar.gz", URL: "https://example.com/mac-intel"},
+		{Name: "token-ray-windows.zip", URL: "https://example.com/win"},
 	}
 
 	matched := updater.MatchAsset(assets, runtime.GOOS, runtime.GOARCH)
@@ -263,13 +263,13 @@ func TestCurrentRuntimeAssetMatching(t *testing.T) {
 
 func TestMatchAsset_IgnoresNonBinaryAssets(t *testing.T) {
 	assets := []updater.Asset{
-		{Name: "ai-flight-dashboard-linux-amd64.sha256", URL: "https://example.com/checksum"},
+		{Name: "token-ray-linux-amd64.sha256", URL: "https://example.com/checksum"},
 		{Name: "SHA256SUMS-linux-amd64.txt", URL: "https://example.com/sums"},
-		{Name: "ai-flight-dashboard-linux-amd64", URL: "https://example.com/bin"},
+		{Name: "token-ray-linux-amd64", URL: "https://example.com/bin"},
 	}
 
 	got := updater.MatchAsset(assets, "linux", "amd64")
-	if got == nil || got.Name != "ai-flight-dashboard-linux-amd64" {
+	if got == nil || got.Name != "token-ray-linux-amd64" {
 		t.Fatalf("expected raw binary, got %+v", got)
 	}
 }
@@ -283,14 +283,14 @@ func TestExtractBinary_PrefersMainExecutable(t *testing.T) {
 	tw := tar.NewWriter(gw)
 
 	_ = tw.WriteHeader(&tar.Header{
-		Name:     "AI Flight Dashboard.app/Contents/MacOS/ai-flight-dashboard Helper",
+		Name:     "Token Ray.app/Contents/MacOS/token-ray Helper",
 		Mode:     0755,
 		Size:     int64(len(helperContent)),
 		Typeflag: tar.TypeReg,
 	})
 	_, _ = tw.Write(helperContent)
 	_ = tw.WriteHeader(&tar.Header{
-		Name:     "AI Flight Dashboard.app/Contents/MacOS/AI Flight Dashboard",
+		Name:     "Token Ray.app/Contents/MacOS/Token Ray",
 		Mode:     0755,
 		Size:     int64(len(mainContent)),
 		Typeflag: tar.TypeReg,
@@ -299,7 +299,7 @@ func TestExtractBinary_PrefersMainExecutable(t *testing.T) {
 	_ = tw.Close()
 	_ = gw.Close()
 
-	extracted, err := updater.ExtractBinaryFromArchive(&buf, "ai-flight-dashboard-macos-m-series.tar.gz")
+	extracted, err := updater.ExtractBinaryFromArchive(&buf, "token-ray-macos-m-series.tar.gz")
 	if err != nil {
 		t.Fatalf("failed to extract: %v", err)
 	}

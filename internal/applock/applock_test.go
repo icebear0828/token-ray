@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ai-flight-dashboard/internal/applock"
+	"token-ray/internal/applock"
 )
 
 func TestTryAcquireRejectsSecondHolder(t *testing.T) {

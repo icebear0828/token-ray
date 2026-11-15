@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 // StartPinger periodically sends ping packets to the LAN.

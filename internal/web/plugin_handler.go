@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"ai-flight-dashboard/internal/plugin"
-	"ai-flight-dashboard/internal/source"
+	"token-ray/internal/plugin"
+	"token-ray/internal/source"
 )
 
 // SourceProvider exposes the active sources to the UI.

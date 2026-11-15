@@ -43,7 +43,7 @@ func handleInstallScript(w http.ResponseWriter, r *http.Request) {
 		"ARCH=$(uname -m)\n"+
 		"if [ \"$ARCH\" = \"x86_64\" ]; then ARCH=\"amd64\"; fi\n"+
 		"if [ \"$ARCH\" = \"aarch64\" ]; then ARCH=\"arm64\"; fi\n"+
-		"echo \"📡 Downloading AI Flight Dashboard ($OS-$ARCH) from %s...\"\n"+
+		"echo \"📡 Downloading Token Ray ($OS-$ARCH) from %s...\"\n"+
 		"curl -o dashboard http://%s/download/dashboard-$OS-$ARCH\n"+
 		"chmod +x dashboard\n"+
 		"echo \"✅ Download complete! Starting LAN mode...\"\n"+

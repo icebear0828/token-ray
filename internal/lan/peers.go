@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 // GetActivePeers returns a list of recently seen remote device IDs.

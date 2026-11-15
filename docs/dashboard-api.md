@@ -1,4 +1,4 @@
-# AI Flight Dashboard
+# Token Ray
 
 ## Types
 
@@ -226,7 +226,7 @@ GET /api/system/logs
 
 Response:
 ```json
-{ "path": "/path/to/ai-flight-dashboard/stats" }
+{ "path": "/path/to/token-ray/stats" }
 ```
 
 ## UI Data Flow
@@ -248,4 +248,4 @@ Response:
 
 ### 页面布局
 
-- DashboardScreen：全屏监控面板。顶部标题包含 ✈️ AI Flight Dashboard 标题和闪烁的 "LIVE" 徽章。下方先渲染一排 PeriodCost 小卡片。然后渲染 SourceStats 卡片网格。每个 Source 卡片包含该来源的总开销数字、Input/Cached/Output Token 数据的四大块统计（类似原来四个小格）、圆环图（Donut Chart）、以及该来源下的 Models 数据表格。整体遵循深色指挥中心风格，极简但信息密度高。
+- DashboardScreen：全屏监控面板。顶部标题包含 ✈️ Token Ray 标题和闪烁的 "LIVE" 徽章。下方先渲染一排 PeriodCost 小卡片。然后渲染 SourceStats 卡片网格。每个 Source 卡片包含该来源的总开销数字、Input/Cached/Output Token 数据的四大块统计（类似原来四个小格）、圆环图（Donut Chart）、以及该来源下的 Models 数据表格。整体遵循深色指挥中心风格，极简但信息密度高。

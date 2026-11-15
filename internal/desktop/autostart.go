@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"ai-flight-dashboard/internal/config"
+	"token-ray/internal/config"
 )
 
 // SetAutoStart registers or unregisters the application for auto-start on login.
@@ -43,7 +43,7 @@ func IsAutoStartEnabled() bool {
 
 func launchAgentPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", "com.ai-flight-dashboard.plist")
+	return filepath.Join(home, "Library", "LaunchAgents", "com.token-ray.plist")
 }
 
 func setAutoStartDarwin(enabled bool) error {
@@ -74,7 +74,7 @@ func darwinAutoStartPlist(exePath string, dataDir string) string {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.ai-flight-dashboard</string>
+    <string>com.token-ray</string>
     <key>ProgramArguments</key>
     <array>
         <string>%s</string>
@@ -94,7 +94,7 @@ func darwinAutoStartPlist(exePath string, dataDir string) string {
 
 func autostartDesktopPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "autostart", "ai-flight-dashboard.desktop")
+	return filepath.Join(home, ".config", "autostart", "token-ray.desktop")
 }
 
 func setAutoStartLinux(enabled bool) error {
@@ -122,9 +122,9 @@ func setAutoStartLinux(enabled bool) error {
 func linuxAutoStartDesktopEntry(exePath string, dataDir string) string {
 	return fmt.Sprintf(`[Desktop Entry]
 Type=Application
-Name=AI Flight Dashboard
+Name=Token Ray
 Exec=%s --data-dir %s
-Icon=ai-flight-dashboard
+Icon=token-ray
 Terminal=false
 X-GNOME-Autostart-enabled=true
 `, exePath, dataDir)

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-flight-dashboard/internal/model"
+	"token-ray/internal/model"
 )
 
 // StartListener joins the multicast group and records discovered peers.

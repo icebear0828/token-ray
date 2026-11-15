@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"ai-flight-dashboard/internal/alert"
-	"ai-flight-dashboard/internal/calculator"
-	"ai-flight-dashboard/internal/db"
-	"ai-flight-dashboard/internal/watcher"
+	"token-ray/internal/alert"
+	"token-ray/internal/calculator"
+	"token-ray/internal/db"
+	"token-ray/internal/watcher"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -138,7 +138,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if m.quitting {
-		return "Shutting down AI Flight Dashboard...\n"
+		return "Shutting down Token Ray...\n"
 	}
 
 	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
@@ -148,7 +148,7 @@ func (m Model) View() string {
 	tableHeader := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
 
 	var b strings.Builder
-	b.WriteString(header.Render("✈️  AI Flight Dashboard") + "\n\n")
+	b.WriteString(header.Render("✈️  Token Ray") + "\n\n")
 
 	// Time-window cost table
 	if len(m.periods) > 0 {
