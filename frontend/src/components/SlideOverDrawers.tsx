@@ -116,6 +116,26 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  // Keep the panel mounted briefly after closing so the exit transition can
+  // play. Data fetching still keys off the real activeDrawer prop.
+  const [renderedDrawer, setRenderedDrawer] = useState<DrawerType>(activeDrawer);
+  const [isClosing, setIsClosing] = useState(false);
+
+  useEffect(() => {
+    if (activeDrawer) {
+      setRenderedDrawer(activeDrawer);
+      setIsClosing(false);
+      return;
+    }
+    if (!renderedDrawer) return;
+    setIsClosing(true);
+    const timer = window.setTimeout(() => {
+      setRenderedDrawer(null);
+      setIsClosing(false);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [activeDrawer, renderedDrawer]);
+
   // LAN Radar state
   const [lanEnabled, setLanEnabled] = useState(true);
   const [lanPeers, setLanPeers] = useState<LanPeer[]>([]);
@@ -246,7 +266,7 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
     [pricingList]
   );
 
-  if (!activeDrawer) return null;
+  if (!renderedDrawer) return null;
 
   const handleToggleLan = async () => {
     setLanBusy(true);
@@ -579,33 +599,43 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/25 backdrop-blur-[2px] transition-opacity">
+    <div
+      className={`fixed inset-0 z-50 flex justify-end bg-slate-900/25 backdrop-blur-[2px] transition-opacity duration-200 ${
+        isClosing ? "opacity-0" : "animate-[overlay-in_200ms_ease-out] opacity-100"
+      }`}
+    >
       <div className="flex-1" onClick={onClose} />
 
-      <aside className="flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-2xl">
+      <aside
+        className={`flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ease-out ${
+          isClosing
+            ? "translate-x-full"
+            : "translate-x-0 animate-[drawer-in_200ms_ease-out]"
+        }`}
+      >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-800">
-              {activeDrawer === "lan" && <Radio className="h-4 w-4" />}
-              {activeDrawer === "devices" && <Laptop className="h-4 w-4" />}
-              {activeDrawer === "pricing" && <DollarSign className="h-4 w-4" />}
-              {activeDrawer === "plugins" && <Package className="h-4 w-4" />}
-              {activeDrawer === "config" && <Sliders className="h-4 w-4" />}
+              {renderedDrawer === "lan" && <Radio className="h-4 w-4" />}
+              {renderedDrawer === "devices" && <Laptop className="h-4 w-4" />}
+              {renderedDrawer === "pricing" && <DollarSign className="h-4 w-4" />}
+              {renderedDrawer === "plugins" && <Package className="h-4 w-4" />}
+              {renderedDrawer === "config" && <Sliders className="h-4 w-4" />}
             </div>
             <div>
               <div className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
-                {activeDrawer === "lan" && t("lan.subtitle")}
-                {activeDrawer === "devices" && t("devices.subtitle")}
-                {activeDrawer === "pricing" && t("pricing.subtitle")}
-                {activeDrawer === "plugins" && t("plugins.subtitle")}
-                {activeDrawer === "config" && t("config.subtitle")}
+                {renderedDrawer === "lan" && t("lan.subtitle")}
+                {renderedDrawer === "devices" && t("devices.subtitle")}
+                {renderedDrawer === "pricing" && t("pricing.subtitle")}
+                {renderedDrawer === "plugins" && t("plugins.subtitle")}
+                {renderedDrawer === "config" && t("config.subtitle")}
               </div>
               <h2 className="text-base font-semibold text-slate-900">
-                {activeDrawer === "lan" && t("lan.title")}
-                {activeDrawer === "devices" && t("devices.title")}
-                {activeDrawer === "pricing" && t("pricing.title")}
-                {activeDrawer === "plugins" && t("plugins.title")}
-                {activeDrawer === "config" && (
+                {renderedDrawer === "lan" && t("lan.title")}
+                {renderedDrawer === "devices" && t("devices.title")}
+                {renderedDrawer === "pricing" && t("pricing.title")}
+                {renderedDrawer === "plugins" && t("plugins.title")}
+                {renderedDrawer === "config" && (
                   <span>
                     {t("config.title")}
                     <span className="sr-only"> - {t("settingsPanel")} / SETTINGS PANEL</span>
@@ -627,7 +657,7 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
 
         <div className="flex-1 overflow-y-auto p-6">
           {/* 1. LAN RADAR PANEL */}
-          {activeDrawer === "lan" && (
+          {renderedDrawer === "lan" && (
             <div className="space-y-6">
               <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-950 p-5 text-white">
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -768,7 +798,7 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
           )}
 
           {/* 2. DEVICES & ALIASES PANEL */}
-          {activeDrawer === "devices" && (
+          {renderedDrawer === "devices" && (
             <div className="space-y-4" data-testid="device-management-list">
               <div className="rounded-lg border border-amber-200/80 bg-amber-50/70 px-3.5 py-2.5 text-xs text-amber-800">
                 {t("devices.soft_delete_hint")}
@@ -917,7 +947,7 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
           )}
 
           {/* 3. MODEL PRICING EDITOR PANEL */}
-          {activeDrawer === "pricing" && (
+          {renderedDrawer === "pricing" && (
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
                 <label className="block text-[11px] font-semibold text-slate-500">
@@ -1049,7 +1079,7 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
 
           {/* 4. SYSTEM & SCANNER CONFIG PANEL */}
           {/* 4. SOURCE PLUGINS PANEL */}
-          {activeDrawer === "plugins" && config && (
+          {renderedDrawer === "plugins" && config && (
             <div className="space-y-5">
               {pluginMessage && (
                 <div
@@ -1217,7 +1247,7 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
             </div>
           )}
 
-          {activeDrawer === "config" && config && (
+          {renderedDrawer === "config" && config && (
             <div className="space-y-5">
               {/* Version & Auto-Update Card */}
               <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
