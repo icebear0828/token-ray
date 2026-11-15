@@ -17,6 +17,11 @@
     "refresh_error": "刷新失败",
     "retry": "重试"
   },
+  "pagination": {
+    "page_of": "第 {{page}} / {{total}} 页",
+    "prev": "上一页",
+    "next": "下一页"
+  },
   "filters": {
     "all_devices": "全部设备",
     "all_sources": "全部工具",
