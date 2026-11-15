@@ -113,7 +113,7 @@ export function App() {
   // Keep the refresh hint visible long enough to register even when the
   // response comes back in a few milliseconds (cached snapshot or warm server).
   const finishRevalidate = useCallback(() => {
-    const remaining = Math.max(0, 220 - (performance.now() - revalidateStartRef.current));
+    const remaining = Math.max(0, 320 - (performance.now() - revalidateStartRef.current));
     if (revalidateTimerRef.current !== null) {
       window.clearTimeout(revalidateTimerRef.current);
     }

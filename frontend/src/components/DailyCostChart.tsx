@@ -57,7 +57,12 @@ export const DailyCostChart = React.memo(function DailyCostChart({
   const granularityLabel = t(`charts.granularity_${granularity}`);
 
   return (
-    <div className="flex h-full flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+    <div className="relative flex h-full flex-col justify-between overflow-hidden rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+      {revalidating && !loading && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden">
+          <div className="h-full w-1/3 animate-[shimmer_1.1s_linear_infinite] bg-gradient-to-r from-transparent via-blue-500 to-transparent" />
+        </div>
+      )}
       {/* Header */}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -71,7 +76,7 @@ export const DailyCostChart = React.memo(function DailyCostChart({
             {revalidating && !loading && (
               <span
                 role="status"
-                className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500"
+                className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600"
               >
                 <Loader2 className="h-2.5 w-2.5 animate-spin" />
                 {t("charts.refreshing")}
@@ -233,8 +238,11 @@ export const DailyCostChart = React.memo(function DailyCostChart({
                     data-date={point.date}
                     data-cost={point.cost}
                     data-tokens={point.tokens}
-                    style={{ height: `${heightPct}%` }}
-                    className={`relative w-full rounded-t-[3px] transition-all duration-150 ${
+                    style={{
+                      height: `${heightPct}%`,
+                      animationDelay: `${Math.min(index * 10, 160)}ms`,
+                    }}
+                    className={`relative w-full origin-bottom animate-[bar-grow_240ms_ease-out_both] rounded-t-[3px] transition-all duration-150 ${
                       isHovered
                         ? "bg-slate-900"
                         : isCurrent
@@ -273,6 +281,15 @@ export const DailyCostChart = React.memo(function DailyCostChart({
                 );
               })}
         </div>
+
+        {revalidating && !loading && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+            <div className="flex items-center gap-2 rounded-full bg-white/95 px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+              {t("charts.refreshing")}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
