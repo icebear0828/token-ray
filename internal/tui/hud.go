@@ -8,33 +8,26 @@ import (
 
 	"ai-flight-dashboard/internal/alert"
 	"ai-flight-dashboard/internal/calculator"
+	"ai-flight-dashboard/internal/dashboard"
 	"ai-flight-dashboard/internal/db"
+	"ai-flight-dashboard/internal/model"
 	"ai-flight-dashboard/internal/watcher"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-type periodCost struct {
-	Label        string
-	Cost                float64
-	InputTokens         int
-	CachedTokens        int
-	CacheCreationTokens int
-	OutputTokens        int
-}
-
 type Model struct {
-	calc       *calculator.Calculator
-	watch      *watcher.Watcher
-	database   *db.DB
-	budget     *alert.BudgetAlert
-	usages     []watcher.TokenUsage
-	totalCost  float64
-	periods    []periodCost
+	calc         *calculator.Calculator
+	watch        *watcher.Watcher
+	database     *db.DB
+	budget       *alert.BudgetAlert
+	usages       []watcher.TokenUsage
+	totalCost    float64
+	periods      []model.PeriodCost
 	budgetStatus *alert.BudgetStatus
-	quitting   bool
-	eventCount int // total events seen (usages slice is capped)
+	quitting     bool
+	eventCount   int // total events seen (usages slice is capped)
 }
 
 const maxLiveEvents = 50 // keep last N events in memory for display
@@ -53,7 +46,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 type usageMsg watcher.TokenUsage
-type periodsMsg []periodCost
+type periodsMsg []model.PeriodCost
 type tickMsg struct{}
 
 func (m Model) waitForUsage() tea.Cmd {
@@ -68,31 +61,10 @@ func (m Model) refreshPeriods() tea.Cmd {
 		if m.database == nil {
 			return periodsMsg(nil)
 		}
-		now := time.Now().UTC()
-		// Only query the most useful windows to minimize SQL overhead
-		windows := []struct {
-			label string
-			dur   time.Duration
-		}{
-			{"1h", 1 * time.Hour},
-			{"24h", 24 * time.Hour},
-			{"7d", 7 * 24 * time.Hour},
-		}
-
-		var periods []periodCost
-		for _, w := range windows {
-			cost, in, ca, caw, out, err := m.database.QueryPeriodStatsSince(now.Add(-w.dur), m.watch.DeviceID, "")
-			if err != nil {
-				log.Printf("TUI DB query error for %s: %v", w.label, err)
-			}
-			periods = append(periods, periodCost{Label: w.label, Cost: cost, InputTokens: in, CachedTokens: ca, CacheCreationTokens: caw, OutputTokens: out})
-		}
-		total, tIn, tCa, tCaw, tOut, err := m.database.QueryPeriodStatsAll(m.watch.DeviceID, "")
+		periods, err := dashboard.BuildPeriodCosts(m.database, m.watch.DeviceID, "")
 		if err != nil {
-			log.Printf("TUI DB query error for ALL: %v", err)
+			log.Printf("TUI DB query error: %v", err)
 		}
-		periods = append(periods, periodCost{Label: "ALL", Cost: total, InputTokens: tIn, CachedTokens: tCa, CacheCreationTokens: tCaw, OutputTokens: tOut})
-
 		return periodsMsg(periods)
 	}
 }
@@ -123,7 +95,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, tea.Batch(m.waitForUsage(), m.refreshPeriods())
 	case periodsMsg:
-		m.periods = []periodCost(msg)
+		m.periods = []model.PeriodCost(msg)
 		// Refresh budget status alongside periods
 		if m.budget != nil {
 			s := m.budget.Check()

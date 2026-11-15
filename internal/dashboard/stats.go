@@ -56,6 +56,12 @@ func PeriodSince(now time.Time, period string) time.Time {
 	return now.Add(-duration)
 }
 
+// BuildPeriodCosts returns the standard dashboard windows plus ALL, using the
+// shared window definitions. The TUI renders these directly.
+func BuildPeriodCosts(database *db.DB, deviceID string, source string) ([]model.PeriodCost, error) {
+	return buildPeriodCosts(database, time.Now().UTC(), normalizeDeviceID(deviceID), source)
+}
+
 // BuildStats constructs the dashboard stats response used by both the HTTP API
 // and the Wails desktop binding.
 func BuildStats(database *db.DB, calc *calculator.Calculator, deviceID string, source string, period string, isPaused bool) (*model.StatsResponse, error) {

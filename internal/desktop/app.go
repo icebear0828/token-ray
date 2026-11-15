@@ -76,42 +76,7 @@ func (a *App) GetStats(deviceID string, source string) (*model.StatsResponse, er
 
 // GetCacheSavings returns cache savings analysis.
 func (a *App) GetCacheSavings(deviceID string) (*model.CacheSavingsResponse, error) {
-	if deviceID == "all" {
-		deviceID = ""
-	}
-
-	records, err := a.database.QueryUsageRecords(time.Time{}, deviceID)
-	if err != nil {
-		return nil, err
-	}
-
-	var actualTotal, hypoTotal float64
-	var totalInput, totalCached int
-
-	for _, rec := range records {
-		actual, _ := a.calc.CalculateCost(rec.Model, rec.InputTokens, rec.CachedTokens, rec.CacheCreationTokens, rec.OutputTokens)
-		hypo, _ := a.calc.CalculateCostNoCaching(rec.Model, rec.InputTokens, rec.CachedTokens, rec.CacheCreationTokens, rec.OutputTokens)
-		actualTotal += actual
-		hypoTotal += hypo
-		totalInput += rec.InputTokens
-		totalCached += rec.CachedTokens
-	}
-
-	saved := hypoTotal - actualTotal
-	savedPct := 0.0
-	if hypoTotal > 0 {
-		savedPct = (saved / hypoTotal) * 100
-	}
-	hitRate := 0.0
-	hitRate = model.CacheHitRatePercent(totalInput, totalCached)
-
-	return &model.CacheSavingsResponse{
-		ActualCost:       actualTotal,
-		HypotheticalCost: hypoTotal,
-		Saved:            saved,
-		SavedPercent:     savedPct,
-		CacheHitRate:     hitRate,
-	}, nil
+	return dashboard.BuildCacheSavings(a.database, a.calc, deviceID)
 }
 
 // --- Device Alias ---
@@ -123,27 +88,9 @@ func (a *App) SetDeviceAlias(deviceID, displayName string) error {
 
 // --- Pricing Management (Phase 2) ---
 
-type PricingEntry struct {
-	Model           string  `json:"model"`
-	InputPricePerM  float64 `json:"input_price_per_m"`
-	CachedPricePerM float64 `json:"cached_price_per_m"`
-	OutputPricePerM float64 `json:"output_price_per_m"`
-}
-
 // GetPricing returns the current pricing table.
-func (a *App) GetPricing() ([]PricingEntry, error) {
-	models := a.calc.ListModels()
-	var entries []PricingEntry
-	for _, m := range models {
-		price, _ := a.calc.GetModelPrice(m)
-		entries = append(entries, PricingEntry{
-			Model:           m,
-			InputPricePerM:  price.InputPricePerM,
-			CachedPricePerM: price.CachedPricePerM,
-			OutputPricePerM: price.OutputPricePerM,
-		})
-	}
-	return entries, nil
+func (a *App) GetPricing() ([]model.PricingEntry, error) {
+	return dashboard.BuildPricingEntries(a.calc), nil
 }
 
 // --- Window Controls ---

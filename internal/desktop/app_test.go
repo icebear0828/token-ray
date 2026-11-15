@@ -42,3 +42,24 @@ func TestGetStatsFiltersBySource(t *testing.T) {
 		t.Fatalf("expected 8 periods, got %d", len(stats.Periods))
 	}
 }
+
+func TestGetPricingIncludesCacheCreationPrice(t *testing.T) {
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+
+	app := desktop.NewApp(database, calc)
+	entries, err := app.GetPricing()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, entry := range entries {
+		if entry.Model == "claude-opus-4-7" {
+			if entry.CacheCreationPricePerM != 6.25 {
+				t.Fatalf("expected cache creation price 6.25, got %v", entry.CacheCreationPricePerM)
+			}
+			return
+		}
+	}
+	t.Fatal("expected claude-opus-4-7 pricing entry")
+}
