@@ -20,9 +20,12 @@ env:
 jobs:
   auto-release:
     name: Auto Release
+    # workflow_dispatch is accepted so a manually re-run Test (recovery from a
+    # dropped push event) can still drive a release; the guard step below still
+    # requires the tested commit to be current main HEAD and untagged.
     if: >
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-22.04
     steps:
@@ -33,7 +36,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Guard release target
         id: guard
