@@ -17,6 +17,11 @@
     "refresh_error": "Refresh failed",
     "retry": "Retry"
   },
+  "pagination": {
+    "page_of": "Page {{page}} / {{total}}",
+    "prev": "Prev",
+    "next": "Next"
+  },
   "filters": {
     "all_devices": "All Devices",
     "all_sources": "All Sources",

@@ -53,9 +53,12 @@ import {
   PricingEntry,
 } from "../types/telemetry";
 import { formatCompactNumber, formatCost } from "../utils/formatters";
+import { usePagination } from "../utils/usePagination";
 import { SourceBadge } from "./SourceBadge";
 
 export type DrawerType = "lan" | "devices" | "pricing" | "plugins" | "config" | null;
+
+const PRICING_PAGE_SIZE = 20;
 
 interface VersionInfo {
   version: string;
@@ -265,6 +268,8 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
     () => [...pricingList].sort((a, b) => a.model.localeCompare(b.model)),
     [pricingList]
   );
+
+  const pricingPagination = usePagination(sortedPricing, PRICING_PAGE_SIZE);
 
   if (!renderedDrawer) return null;
 
@@ -982,7 +987,7 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
               )}
 
               <div className="space-y-3">
-                {sortedPricing.map((entry) => {
+                {pricingPagination.pageItems.map((entry) => {
                   const idx = pricingList.findIndex((item) => item.model === entry.model);
                   return (
                     <div key={entry.model} className="rounded-xl border border-slate-200 bg-white p-3.5">
@@ -1054,6 +1059,35 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
                   );
                 })}
               </div>
+
+              {pricingPagination.total > PRICING_PAGE_SIZE && (
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span className="font-mono-num">
+                    {t("pagination.page_of", {
+                      page: pricingPagination.page + 1,
+                      total: pricingPagination.pageCount,
+                    })}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={pricingPagination.page === 0}
+                      onClick={() => pricingPagination.setPage(pricingPagination.page - 1)}
+                      className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t("pagination.prev")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={pricingPagination.page >= pricingPagination.pageCount - 1}
+                      onClick={() => pricingPagination.setPage(pricingPagination.page + 1)}
+                      className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t("pagination.next")}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="sticky bottom-0 flex items-center justify-between border-t border-slate-100 bg-white pt-4">
                 {pricingSaved ? (

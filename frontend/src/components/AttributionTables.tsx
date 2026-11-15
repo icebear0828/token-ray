@@ -10,6 +10,7 @@ import {
   formatPercent,
   formatUnitPrice,
 } from "../utils/formatters";
+import { usePagination } from "../utils/usePagination";
 import { SourceBadge } from "./SourceBadge";
 
 interface AttributionTablesProps {
@@ -23,6 +24,9 @@ interface AttributionTablesProps {
 interface FlattenedModelRow extends ModelStats {
   sourceName: string;
 }
+
+const MODEL_PAGE_SIZE = 25;
+const PROJECT_PAGE_SIZE = 20;
 
 export const AttributionTables: React.FC<AttributionTablesProps> = ({
   sources,
@@ -75,6 +79,17 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
   const totalProjectCost = useMemo(
     () => (projects ?? []).reduce((acc, p) => acc + (p.total_cost || 0), 0),
     [projects]
+  );
+
+  const modelPagination = usePagination(
+    flattenedModels,
+    MODEL_PAGE_SIZE,
+    `${deferredQuery}|${sortBy}`
+  );
+  const projectPagination = usePagination(
+    filteredProjects,
+    PROJECT_PAGE_SIZE,
+    deferredQuery
   );
 
   return (
@@ -182,7 +197,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
                   </td>
                 </tr>
               ) : (
-                flattenedModels.map((row) => {
+                modelPagination.pageItems.map((row) => {
                   const baseInput = calcBaseInput(
                     row.input_tokens,
                     row.cached_tokens,
@@ -257,6 +272,34 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
             </tbody>
           </table>
         </div>
+        {modelPagination.total > MODEL_PAGE_SIZE && (
+          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-2.5 text-[11px] text-slate-500">
+            <span className="font-mono-num">
+              {t("pagination.page_of", {
+                page: modelPagination.page + 1,
+                total: modelPagination.pageCount,
+              })}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={modelPagination.page === 0}
+                onClick={() => modelPagination.setPage(modelPagination.page - 1)}
+                className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t("pagination.prev")}
+              </button>
+              <button
+                type="button"
+                disabled={modelPagination.page >= modelPagination.pageCount - 1}
+                onClick={() => modelPagination.setPage(modelPagination.page + 1)}
+                className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t("pagination.next")}
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* 2. Project Workspace Attribution Table */}
@@ -326,7 +369,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredProjects.map((proj) => {
+                projectPagination.pageItems.map((proj) => {
                   const baseInput = calcBaseInput(
                     proj.input_tokens,
                     proj.cached_tokens,
@@ -397,6 +440,34 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
             </tbody>
           </table>
         </div>
+        {projectPagination.total > PROJECT_PAGE_SIZE && (
+          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-2.5 text-[11px] text-slate-500">
+            <span className="font-mono-num">
+              {t("pagination.page_of", {
+                page: projectPagination.page + 1,
+                total: projectPagination.pageCount,
+              })}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={projectPagination.page === 0}
+                onClick={() => projectPagination.setPage(projectPagination.page - 1)}
+                className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t("pagination.prev")}
+              </button>
+              <button
+                type="button"
+                disabled={projectPagination.page >= projectPagination.pageCount - 1}
+                onClick={() => projectPagination.setPage(projectPagination.page + 1)}
+                className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t("pagination.next")}
+              </button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
