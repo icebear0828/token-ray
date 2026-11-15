@@ -17,6 +17,19 @@
     "refresh_error": "Refresh failed",
     "retry": "Retry"
   },
+  "toasts": {
+    "alias_saved": "Device alias saved",
+    "alias_cleared": "Device alias cleared",
+    "device_deleted": "Device soft-deleted",
+    "config_saved": "Settings saved",
+    "pricing_saved": "Model prices saved",
+    "plugin_enabled": "Plugin enabled",
+    "plugin_disabled": "Plugin disabled",
+    "plugin_removed": "Plugin removed",
+    "lan_enabled": "Joined the LAN",
+    "lan_disabled": "Left the LAN",
+    "action_failed": "Action failed"
+  },
   "filters": {
     "all_devices": "All Devices",
     "all_sources": "All Sources",

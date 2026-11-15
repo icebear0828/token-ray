@@ -17,6 +17,19 @@
     "refresh_error": "刷新失败",
     "retry": "重试"
   },
+  "toasts": {
+    "alias_saved": "设备别名已保存",
+    "alias_cleared": "设备别名已清除",
+    "device_deleted": "设备已软删除",
+    "config_saved": "系统配置已保存",
+    "pricing_saved": "模型单价已保存",
+    "plugin_enabled": "插件已启用",
+    "plugin_disabled": "插件已禁用",
+    "plugin_removed": "插件已卸载",
+    "lan_enabled": "已加入局域网",
+    "lan_disabled": "已退出局域网",
+    "action_failed": "操作失败"
+  },
   "filters": {
     "all_devices": "全部设备",
     "all_sources": "全部工具",
