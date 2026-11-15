@@ -13,6 +13,7 @@
     "loading": "Reading local usage data…",
     "load_error_title": "Cannot reach the local dashboard service",
     "load_error_hint": "Make sure the dashboard process is running. Desktop builds: check the system log.",
+    "render_error_title": "This section failed to render",
     "refresh_error": "Refresh failed",
     "retry": "Retry"
   },

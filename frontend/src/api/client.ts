@@ -35,6 +35,15 @@ const record = (value: unknown): Record<string, unknown> =>
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
+  const externalSignal = init?.signal;
+  const abortFromExternal = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener("abort", abortFromExternal, { once: true });
+    }
+  }
   try {
     const res = await fetch(url, {
       ...init,
@@ -59,6 +68,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     return JSON.parse(text) as T;
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abortFromExternal);
   }
 }
 
@@ -175,19 +185,24 @@ export const normalizeDashboardData = (raw: unknown): DashboardData => {
   };
 };
 
-export async function fetchStats(params: {
-  device: string;
-  source: string;
-  period: string;
-  detail: "summary" | "details";
-}): Promise<DashboardData> {
+export async function fetchStats(
+  params: {
+    device: string;
+    source: string;
+    period: string;
+    detail: "summary" | "details";
+  },
+  options?: { signal?: AbortSignal }
+): Promise<DashboardData> {
   const qs = new URLSearchParams({
     device: params.device || "all",
     source: params.source || "",
     period: params.period,
     detail: params.detail,
   });
-  const raw = await requestJson<unknown>(`/api/stats?${qs.toString()}`);
+  const raw = await requestJson<unknown>(`/api/stats?${qs.toString()}`, {
+    signal: options?.signal,
+  });
   if (raw === null) {
     throw new Error("Dashboard returned an empty or non-JSON response");
   }

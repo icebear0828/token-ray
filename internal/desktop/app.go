@@ -34,7 +34,7 @@ func NewApp(database *db.DB, calc *calculator.Calculator) *App {
 	return &App{
 		database:   database,
 		calc:       calc,
-		statsCache: dashboard.NewStatsCache(2 * time.Second),
+		statsCache: dashboard.NewStatsCache(10 * time.Second),
 	}
 }
 

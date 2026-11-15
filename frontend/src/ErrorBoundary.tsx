@@ -4,8 +4,13 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: (error: Error, reset: () => void) => React.ReactNode;
+}
+
 export class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+  ErrorBoundaryProps,
   ErrorBoundaryState
 > {
   state: ErrorBoundaryState = { error: null };
@@ -18,8 +23,13 @@ export class ErrorBoundary extends React.Component<
     console.error("Dashboard render failed", error, info);
   }
 
+  private reset = () => this.setState({ error: null });
+
   render() {
     if (this.state.error) {
+      if (this.props.fallback) {
+        return this.props.fallback(this.state.error, this.reset);
+      }
       return (
         <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC] px-4">
           <div
