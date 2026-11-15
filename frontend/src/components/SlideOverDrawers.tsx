@@ -54,6 +54,7 @@ import {
 } from "../types/telemetry";
 import { formatCompactNumber, formatCost } from "../utils/formatters";
 import { SourceBadge } from "./SourceBadge";
+import { useToast } from "./Toast";
 
 export type DrawerType = "lan" | "devices" | "pricing" | "plugins" | "config" | null;
 
@@ -115,6 +116,12 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
   onDataMutated,
 }) => {
   const { t } = useTranslation();
+  const { showToast } = useToast();
+
+  const toastError = (err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    showToast("error", `${t("toasts.action_failed")}: ${message}`);
+  };
 
   // Keep the panel mounted briefly after closing so the exit transition can
   // play. Data fetching still keys off the real activeDrawer prop.
@@ -280,6 +287,12 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
       setLanEnabled(statusRes.enabled);
       setLanPeers(scanRes.peer_infos ?? []);
       onDataMutated();
+      showToast(
+        "success",
+        statusRes.enabled ? t("toasts.lan_enabled") : t("toasts.lan_disabled")
+      );
+    } catch (err: unknown) {
+      toastError(err);
     } finally {
       setLanBusy(false);
     }
@@ -297,6 +310,9 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
       const updated = await fetchDevices();
       setDevices(updated);
       onDataMutated();
+      showToast("success", value ? t("toasts.alias_saved") : t("toasts.alias_cleared"));
+    } catch (err: unknown) {
+      toastError(err);
     } finally {
       setDeviceBusyId(null);
     }
@@ -310,6 +326,9 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
       const updated = await fetchDevices();
       setDevices(updated);
       onDataMutated();
+      showToast("success", t("toasts.alias_cleared"));
+    } catch (err: unknown) {
+      toastError(err);
     } finally {
       setDeviceBusyId(null);
     }
@@ -328,6 +347,9 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
       setDevices(updated);
       setAliasDrafts((prev) => ({ ...prev, [deviceId]: displayName }));
       onDataMutated();
+      showToast("success", t("toasts.alias_saved"));
+    } catch (err: unknown) {
+      toastError(err);
     } finally {
       setDeviceBusyId(null);
     }
@@ -341,6 +363,9 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
       const updated = await fetchDevices();
       setDevices(updated);
       onDataMutated();
+      showToast("success", t("toasts.device_deleted"));
+    } catch (err: unknown) {
+      toastError(err);
     } finally {
       setDeviceBusyId(null);
     }
@@ -373,7 +398,10 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
       await savePricing(pricingList);
       setPricingSaved(true);
       onDataMutated();
+      showToast("success", t("toasts.pricing_saved"));
       setTimeout(() => setPricingSaved(false), 2200);
+    } catch (err: unknown) {
+      toastError(err);
     } finally {
       setPricingSaving(false);
     }
@@ -430,7 +458,10 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
       await saveConfig(config);
       setConfigSaved(true);
       onDataMutated();
+      showToast("success", t("toasts.config_saved"));
       setTimeout(() => setConfigSaved(false), 2200);
+    } catch (err: unknown) {
+      toastError(err);
     } finally {
       setConfigSaving(false);
     }
@@ -495,10 +526,12 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
     try {
       const manifest = await installPluginZip(file);
       setPluginMessage(t("plugins.installed_toast", { name: manifest.name }));
+      showToast("success", t("plugins.installed_toast", { name: manifest.name }));
       if (pluginFileRef.current) pluginFileRef.current.value = "";
       await refreshPlugins();
     } catch (err: unknown) {
       setPluginError(err instanceof Error ? err.message : String(err));
+      toastError(err);
     } finally {
       setPluginBusy(null);
     }
@@ -511,9 +544,11 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
     try {
       const manifest = await installPluginURL(entry.download_url, entry.sha256);
       setPluginMessage(t("plugins.installed_toast", { name: manifest.name }));
+      showToast("success", t("plugins.installed_toast", { name: manifest.name }));
       await refreshPlugins();
     } catch (err: unknown) {
       setPluginError(err instanceof Error ? err.message : String(err));
+      toastError(err);
     } finally {
       setPluginBusy(null);
     }
@@ -526,8 +561,13 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
     try {
       await setPluginEnabled(plugin.manifest.id, !plugin.enabled);
       await refreshPlugins();
+      showToast(
+        "success",
+        plugin.enabled ? t("toasts.plugin_disabled") : t("toasts.plugin_enabled")
+      );
     } catch (err: unknown) {
       setPluginError(err instanceof Error ? err.message : String(err));
+      toastError(err);
     } finally {
       setPluginBusy(null);
     }
@@ -541,8 +581,10 @@ export const SlideOverDrawers: React.FC<SlideOverDrawersProps> = ({
     try {
       await removePlugin(plugin.manifest.id);
       await refreshPlugins();
+      showToast("success", t("toasts.plugin_removed"));
     } catch (err: unknown) {
       setPluginError(err instanceof Error ? err.message : String(err));
+      toastError(err);
     } finally {
       setPluginBusy(null);
     }
