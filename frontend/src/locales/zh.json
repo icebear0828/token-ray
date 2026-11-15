@@ -50,6 +50,7 @@
   },
   "charts": {
     "trend_title": "成本与用量趋势",
+    "refreshing": "刷新中…",
     "trend_sub": "{{period}} 时间窗口 · {{granularity}}聚合",
     "trend_avg": "均值",
     "trend_peak": "峰值",

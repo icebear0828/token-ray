@@ -50,6 +50,7 @@
   },
   "charts": {
     "trend_title": "COST & USAGE TREND",
+    "refreshing": "Refreshing…",
     "trend_sub": "{{period}} WINDOW · {{granularity}} BUCKETS",
     "trend_avg": "Avg",
     "trend_peak": "Peak",

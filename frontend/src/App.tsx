@@ -86,6 +86,7 @@ export function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [sourceDescriptors, setSourceDescriptors] = useState<SourceDescriptor[]>([]);
   const [isSummaryLoading, setIsSummaryLoading] = useState<boolean>(false);
+  const [isRevalidating, setIsRevalidating] = useState<boolean>(false);
   const [isHydratingDetails, setIsHydratingDetails] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
   const [pauseBusy, setPauseBusy] = useState<boolean>(false);
@@ -106,6 +107,21 @@ export function App() {
   const requestSeqRef = useRef<number>(0);
   const abortRef = useRef<AbortController | null>(null);
   const statsCacheRef = useRef<Map<string, DashboardData>>(new Map());
+  const revalidateStartRef = useRef<number>(0);
+  const revalidateTimerRef = useRef<number | null>(null);
+
+  // Keep the refresh hint visible long enough to register even when the
+  // response comes back in a few milliseconds (cached snapshot or warm server).
+  const finishRevalidate = useCallback(() => {
+    const remaining = Math.max(0, 220 - (performance.now() - revalidateStartRef.current));
+    if (revalidateTimerRef.current !== null) {
+      window.clearTimeout(revalidateTimerRef.current);
+    }
+    revalidateTimerRef.current = window.setTimeout(() => {
+      revalidateTimerRef.current = null;
+      setIsRevalidating(false);
+    }, remaining);
+  }, []);
 
   const refreshSources = useCallback(() => {
     fetchSources()
@@ -137,6 +153,12 @@ export function App() {
 
       try {
         if (!isBackgroundPoll) {
+          revalidateStartRef.current = performance.now();
+          if (revalidateTimerRef.current !== null) {
+            window.clearTimeout(revalidateTimerRef.current);
+            revalidateTimerRef.current = null;
+          }
+          setIsRevalidating(true);
           // A cached snapshot for this exact scope can paint immediately, so
           // only surface the loading skeleton when we have nothing to show.
           setIsSummaryLoading(!cached);
@@ -174,6 +196,7 @@ export function App() {
           };
         });
         setIsSummaryLoading(false);
+        finishRevalidate();
         setLoadError("");
 
         const detailsRes = await fetchStats(
@@ -203,10 +226,11 @@ export function App() {
         if (controller.signal.aborted) return;
         setLoadError(error instanceof Error ? error.message : String(error));
         setIsSummaryLoading(false);
+        finishRevalidate();
         setIsHydratingDetails(false);
       }
     },
-    [selectedDevice, selectedSource, selectedWindow]
+    [selectedDevice, selectedSource, selectedWindow, finishRevalidate]
   );
 
   // Initial & filter-change two-stage load
@@ -223,7 +247,15 @@ export function App() {
   }, [loadTelemetry]);
 
   // Drop any in-flight telemetry request when the app unmounts.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      if (revalidateTimerRef.current !== null) {
+        window.clearTimeout(revalidateTimerRef.current);
+      }
+    },
+    []
+  );
 
   const handleTogglePause = async () => {
     setPauseBusy(true);
@@ -857,6 +889,7 @@ export function App() {
                 period={selectedWindow}
                 currency={currency}
                 loading={isSummaryLoading}
+                revalidating={isRevalidating}
               />
             </div>
             <div className="lg:col-span-5">

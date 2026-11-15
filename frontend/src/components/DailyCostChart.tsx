@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Loader2 } from "lucide-react";
 import { BucketGranularity, CurrencyCode, DailyCostPoint } from "../types/telemetry";
 import { formatCompactNumber, formatCost } from "../utils/formatters";
 
@@ -11,6 +12,7 @@ interface DailyCostChartProps {
   period: string;
   currency: CurrencyCode;
   loading?: boolean;
+  revalidating?: boolean;
 }
 
 const SKELETON_BAR_HEIGHTS = [
@@ -29,6 +31,7 @@ export const DailyCostChart = React.memo(function DailyCostChart({
   period,
   currency,
   loading = false,
+  revalidating = false,
 }: DailyCostChartProps) {
   const { t } = useTranslation();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -61,9 +64,20 @@ export const DailyCostChart = React.memo(function DailyCostChart({
           <div className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
             {t("charts.trend_sub", { period, granularity: granularityLabel })}
           </div>
-          <h3 className="mt-0.5 text-sm font-semibold text-slate-900">
-            {t("charts.trend_title")}
-          </h3>
+          <div className="mt-0.5 flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-slate-900">
+              {t("charts.trend_title")}
+            </h3>
+            {revalidating && !loading && (
+              <span
+                role="status"
+                className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500"
+              >
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                {t("charts.refreshing")}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -186,7 +200,10 @@ export const DailyCostChart = React.memo(function DailyCostChart({
           </div>
         ) : (
           <div
-            className="relative z-10 flex h-full items-end justify-center gap-[3px] pl-14 pb-5"
+            key={`${period}-${granularity}`}
+            className={`relative z-10 flex h-full animate-[fade-in_180ms_ease-out] items-end justify-center gap-[3px] pl-14 pb-5 transition-opacity duration-150 ${
+              revalidating ? "opacity-60" : "opacity-100"
+            }`}
             onMouseLeave={() => setHoveredIdx(null)}
           >
             {stats.safeData.map((point, index) => {
