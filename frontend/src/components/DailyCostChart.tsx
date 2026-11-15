@@ -10,7 +10,12 @@ interface DailyCostChartProps {
   granularity: BucketGranularity;
   period: string;
   currency: CurrencyCode;
+  loading?: boolean;
 }
+
+const SKELETON_BAR_HEIGHTS = [
+  38, 52, 30, 64, 45, 72, 40, 58, 33, 49, 67, 36, 55, 42, 60, 31, 50, 70, 44, 57, 35, 62, 48, 54,
+];
 
 const axisLabel = (date: string, granularity: BucketGranularity): string => {
   if (granularity === "hourly") return date.slice(11, 16);
@@ -18,12 +23,13 @@ const axisLabel = (date: string, granularity: BucketGranularity): string => {
   return date.slice(5);
 };
 
-export const DailyCostChart: React.FC<DailyCostChartProps> = ({
+export const DailyCostChart = React.memo(function DailyCostChart({
   data,
   granularity,
   period,
   currency,
-}) => {
+  loading = false,
+}: DailyCostChartProps) {
   const { t } = useTranslation();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [metric, setMetric] = useState<TrendMetric>("cost");
@@ -90,13 +96,21 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1 text-right">
             <div className="text-[10px] font-medium text-slate-400">{t("charts.trend_avg")}</div>
             <div className="font-mono-num text-xs font-semibold text-slate-700">
-              {formatValue(stats.avg)}
+              {loading ? (
+                <span className="inline-block h-3 w-10 animate-pulse rounded bg-slate-200/80 align-middle" />
+              ) : (
+                formatValue(stats.avg)
+              )}
             </div>
           </div>
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1 text-right">
             <div className="text-[10px] font-medium text-slate-400">{t("charts.trend_peak")}</div>
             <div className="font-mono-num text-xs font-semibold text-slate-900">
-              {formatValue(stats.maxVal)}
+              {loading ? (
+                <span className="inline-block h-3 w-10 animate-pulse rounded bg-slate-200/80 align-middle" />
+              ) : (
+                formatValue(stats.maxVal)
+              )}
             </div>
           </div>
         </div>
@@ -104,7 +118,12 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({
 
       {/* Hover Status Readout Strip */}
       <div className="mb-2 flex h-6 items-center justify-between rounded-md bg-slate-50/80 px-2.5 text-xs">
-        {hoveredItem ? (
+        {loading ? (
+          <>
+            <span className="inline-block h-3 w-28 animate-pulse rounded bg-slate-200/80" />
+            <span className="inline-block h-3 w-16 animate-pulse rounded bg-slate-200/80" />
+          </>
+        ) : hoveredItem ? (
           <>
             <span className="font-mono-num font-medium text-slate-600">{hoveredItem.date}</span>
             <div className="flex items-center gap-2">
@@ -143,7 +162,7 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({
           {[1, 0.5, 0].map((ratio, idx) => (
             <div key={idx} className="relative flex w-full items-center">
               <span className="font-mono-num w-14 pr-2 text-right text-[10px] text-slate-400">
-                {formatValue(stats.ceiling * ratio)}
+                {loading ? "" : formatValue(stats.ceiling * ratio)}
               </span>
               <div className="h-px flex-1 border-b border-dashed border-slate-200/80" />
             </div>
@@ -151,71 +170,93 @@ export const DailyCostChart: React.FC<DailyCostChartProps> = ({
         </div>
 
         {/* Bars Container */}
-        <div
-          className="relative z-10 flex h-full items-end justify-center gap-[3px] pl-14 pb-5"
-          onMouseLeave={() => setHoveredIdx(null)}
-        >
-          {stats.safeData.map((point, index) => {
-            const value = stats.valueOf(point);
-            const heightPct =
-              value > 0 && stats.ceiling > 0
-                ? Math.min(100, Math.max(2, (value / stats.ceiling) * 100))
-                : 0;
-            const isHovered = hoveredIdx === index;
-            const isCurrent = index === stats.safeData.length - 1;
-
-            return (
+        {loading ? (
+          <div className="relative z-10 flex h-full items-end justify-center gap-[3px] pl-14 pb-5">
+            {SKELETON_BAR_HEIGHTS.map((height, index) => (
               <div
-                key={point.date || index}
-                onMouseEnter={() => setHoveredIdx(index)}
-                onMouseLeave={() => setHoveredIdx(null)}
-                className="group relative flex h-full max-w-[48px] flex-1 cursor-pointer flex-col items-center justify-end"
+                key={index}
+                className="flex h-full max-w-[48px] flex-1 flex-col items-center justify-end"
               >
-                {/* Hover column highlight */}
-                {isHovered && (
-                  <div className="pointer-events-none absolute inset-y-0 -inset-x-[1px] rounded bg-slate-100/80" />
-                )}
-
-                {/* Actual bucket bar (Playwright selector preserved) */}
                 <div
-                  data-testid="daily-cost-bar"
-                  data-date={point.date}
-                  data-cost={point.cost}
-                  data-tokens={point.tokens}
-                  style={{ height: `${heightPct}%` }}
-                  className={`relative w-full rounded-t-[3px] transition-all duration-150 ${
-                    isHovered
-                      ? "bg-slate-900"
-                      : isCurrent
-                        ? "bg-blue-600"
-                        : value === 0
-                          ? ""
-                          : "bg-slate-700/85 hover:bg-slate-900"
-                  }`}
+                  className="w-full animate-pulse rounded-t-[3px] bg-slate-200/70"
+                  style={{ height: `${height}%` }}
                 />
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            className="relative z-10 flex h-full items-end justify-center gap-[3px] pl-14 pb-5"
+            onMouseLeave={() => setHoveredIdx(null)}
+          >
+            {stats.safeData.map((point, index) => {
+              const value = stats.valueOf(point);
+              const heightPct =
+                value > 0 && stats.ceiling > 0
+                  ? Math.min(100, Math.max(2, (value / stats.ceiling) * 100))
+                  : 0;
+              const isHovered = hoveredIdx === index;
+              const isCurrent = index === stats.safeData.length - 1;
+
+              return (
+                <div
+                  key={point.date || index}
+                  onMouseEnter={() => setHoveredIdx(index)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                  className="group relative flex h-full max-w-[48px] flex-1 cursor-pointer flex-col items-center justify-end"
+                >
+                  {/* Hover column highlight */}
+                  {isHovered && (
+                    <div className="pointer-events-none absolute inset-y-0 -inset-x-[1px] rounded bg-slate-100/80" />
+                  )}
+
+                  {/* Actual bucket bar (Playwright selector preserved) */}
+                  <div
+                    data-testid="daily-cost-bar"
+                    data-date={point.date}
+                    data-cost={point.cost}
+                    data-tokens={point.tokens}
+                    style={{ height: `${heightPct}%` }}
+                    className={`relative w-full rounded-t-[3px] transition-all duration-150 ${
+                      isHovered
+                        ? "bg-slate-900"
+                        : isCurrent
+                          ? "bg-blue-600"
+                          : value === 0
+                            ? ""
+                            : "bg-slate-700/85 hover:bg-slate-900"
+                    }`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Sparse X-Axis Labels */}
         <div className="flex justify-center gap-[3px] pl-14 text-[10px] text-slate-400">
-          {stats.safeData.map((point, idx) => {
-            const showLabel =
-              idx === 0 ||
-              idx === stats.safeData.length - 1 ||
-              idx % labelStep === 0;
-            return (
-              <span
-                key={point.date || idx}
-                className="font-mono-num max-w-[48px] flex-1 text-center whitespace-nowrap"
-              >
-                {showLabel ? axisLabel(point.date, granularity) : ""}
-              </span>
-            );
-          })}
+          {loading
+            ? SKELETON_BAR_HEIGHTS.map((_, idx) => (
+                <span key={idx} className="max-w-[48px] flex-1 text-center">
+                  <span className="inline-block h-2 w-5 animate-pulse rounded bg-slate-100" />
+                </span>
+              ))
+            : stats.safeData.map((point, idx) => {
+                const showLabel =
+                  idx === 0 ||
+                  idx === stats.safeData.length - 1 ||
+                  idx % labelStep === 0;
+                return (
+                  <span
+                    key={point.date || idx}
+                    className="font-mono-num max-w-[48px] flex-1 text-center whitespace-nowrap"
+                  >
+                    {showLabel ? axisLabel(point.date, granularity) : ""}
+                  </span>
+                );
+              })}
         </div>
       </div>
     </div>
   );
-};
+});

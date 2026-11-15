@@ -16,13 +16,13 @@ interface SourceShareChartProps {
   currency: CurrencyCode;
 }
 
-export const SourceShareChart: React.FC<SourceShareChartProps> = ({
+export const SourceShareChart = React.memo(function SourceShareChart({
   toolShare,
   sources,
   activeSource,
   onSelectSource,
   currency,
-}) => {
+}: SourceShareChartProps) {
   const { t } = useTranslation();
   const [metric, setMetric] = useState<"cost" | "tokens">("cost");
   const [hoveredSource, setHoveredSource] = useState<string | null>(null);
@@ -262,4 +262,4 @@ export const SourceShareChart: React.FC<SourceShareChartProps> = ({
       </div>
     </div>
   );
-};
+});

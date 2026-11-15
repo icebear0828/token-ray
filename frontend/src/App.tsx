@@ -49,6 +49,28 @@ const DEFAULT_SOURCES = [
   "Pi Agent",
 ];
 
+// Client-side cache of fully hydrated dashboard snapshots. Switching back to a
+// recently viewed device/source/window paints instantly while the background
+// request revalidates the data.
+const STATS_CACHE_LIMIT = 32;
+
+const statsCacheKey = (device: string, source: string, period: string) =>
+  `${device}|${source}|${period}`;
+
+const rememberStats = (
+  cache: Map<string, DashboardData>,
+  key: string,
+  value: DashboardData
+) => {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > STATS_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+};
+
 export function App() {
   const { t, i18n } = useTranslation();
 
@@ -62,6 +84,7 @@ export function App() {
   // Two-stage Telemetry State
   const [data, setData] = useState<DashboardData | null>(null);
   const [sourceDescriptors, setSourceDescriptors] = useState<SourceDescriptor[]>([]);
+  const [isSummaryLoading, setIsSummaryLoading] = useState<boolean>(false);
   const [isHydratingDetails, setIsHydratingDetails] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
   const [pauseBusy, setPauseBusy] = useState<boolean>(false);
@@ -80,6 +103,8 @@ export function App() {
   }, []);
 
   const requestSeqRef = useRef<number>(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const statsCacheRef = useRef<Map<string, DashboardData>>(new Map());
 
   const refreshSources = useCallback(() => {
     fetchSources()
@@ -102,18 +127,32 @@ export function App() {
   const loadTelemetry = useCallback(
     async (isBackgroundPoll = false) => {
       const seq = ++requestSeqRef.current;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const cacheKey = statsCacheKey(selectedDevice, selectedSource, selectedWindow);
+      const cached = isBackgroundPoll ? undefined : statsCacheRef.current.get(cacheKey);
 
       try {
         if (!isBackgroundPoll) {
+          // A cached snapshot for this exact scope can paint immediately, so
+          // only surface the loading skeleton when we have nothing to show.
+          setIsSummaryLoading(!cached);
           setIsHydratingDetails(true);
+          if (cached) setData(cached);
         }
-        const summaryRes = await fetchStats({
-          device: selectedDevice,
-          source: selectedSource,
-          period: selectedWindow,
-          detail: "summary",
-        });
+        const summaryRes = await fetchStats(
+          {
+            device: selectedDevice,
+            source: selectedSource,
+            period: selectedWindow,
+            detail: "summary",
+          },
+          { signal: controller.signal }
+        );
         if (seq !== requestSeqRef.current) return;
+        const preservePrevious = isBackgroundPoll || Boolean(cached);
         setData((prev) => {
           const previousModels = new Map(
             (prev?.sources ?? []).map((source) => [source.name, source.models])
@@ -123,42 +162,46 @@ export function App() {
             sources: summaryRes.sources.map((source) => {
               const models = source.models.length
                 ? source.models
-                : isBackgroundPoll
+                : preservePrevious
                   ? previousModels.get(source.name) ?? []
                   : [];
               return { ...source, models };
             }),
             // A user-initiated scope change must not keep the previous
             // window's projects visible while details are in flight.
-            projects: isBackgroundPoll ? prev?.projects : undefined,
+            projects: preservePrevious ? prev?.projects : undefined,
           };
         });
+        setIsSummaryLoading(false);
         setLoadError("");
 
-        const detailsRes = await fetchStats({
-          device: selectedDevice,
-          source: selectedSource,
-          period: selectedWindow,
-          detail: "details",
-        });
-        if (seq !== requestSeqRef.current) return;
-        setData((prev) =>
-          prev
-            ? {
-                ...prev,
-                // A successful details response is authoritative even when it
-                // is empty: the selected window/source may have no usage.
-                sources: detailsRes.sources,
-                projects: detailsRes.projects ?? [],
-                is_paused: detailsRes.is_paused ?? prev.is_paused,
-              }
-            : detailsRes
+        const detailsRes = await fetchStats(
+          {
+            device: selectedDevice,
+            source: selectedSource,
+            period: selectedWindow,
+            detail: "details",
+          },
+          { signal: controller.signal }
         );
+        if (seq !== requestSeqRef.current) return;
+        // A successful details response is authoritative even when it is
+        // empty: the selected window/source may have no usage.
+        const hydrated: DashboardData = {
+          ...summaryRes,
+          sources: detailsRes.sources,
+          projects: detailsRes.projects ?? [],
+          is_paused: detailsRes.is_paused ?? summaryRes.is_paused,
+        };
+        rememberStats(statsCacheRef.current, cacheKey, hydrated);
+        setData(hydrated);
         setIsHydratingDetails(false);
         setLoadError("");
       } catch (error: unknown) {
         if (seq !== requestSeqRef.current) return;
+        if (controller.signal.aborted) return;
         setLoadError(error instanceof Error ? error.message : String(error));
+        setIsSummaryLoading(false);
         setIsHydratingDetails(false);
       }
     },
@@ -177,6 +220,9 @@ export function App() {
     }, 5000);
     return () => clearInterval(interval);
   }, [loadTelemetry]);
+
+  // Drop any in-flight telemetry request when the app unmounts.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const handleTogglePause = async () => {
     setPauseBusy(true);
@@ -784,6 +830,7 @@ export function App() {
               granularity={data?.charts?.granularity ?? "daily"}
               period={selectedWindow}
               currency={currency}
+              loading={isSummaryLoading}
             />
           </div>
           <div className="lg:col-span-5">

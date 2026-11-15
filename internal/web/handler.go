@@ -32,7 +32,9 @@ const maxPluginUpload = 12 << 20
 
 func NewHandlerWithDeps(database *db.DB, calc *calculator.Calculator, wInst *watcher.Watcher, lanControl LANController, token string, distBinFS embed.FS, deps HandlerDeps) http.Handler {
 	mux := http.NewServeMux()
-	statsCache := dashboard.NewStatsCache(2 * time.Second)
+	// The dashboard polls every 5s; a TTL shorter than that misses on every
+	// poll. 10s keeps results warm across polls while staying near-real-time.
+	statsCache := dashboard.NewStatsCache(10 * time.Second)
 
 	mux.HandleFunc("/api/sources", func(w http.ResponseWriter, r *http.Request) {
 		handleSources(w, r, deps.Sources)
