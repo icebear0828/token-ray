@@ -14,10 +14,10 @@ export function usePagination<T>(items: T[], pageSize: number, resetKey?: unknow
   }, [resetKey]);
 
   useEffect(() => {
-    if (page > pageCount - 1) {
-      setPage(pageCount - 1);
-    }
-  }, [page, pageCount]);
+    // Functional update so this cannot race the reset effect: a stale `page`
+    // closure would otherwise win when resetKey and pageCount change together.
+    setPage((current) => Math.min(current, pageCount - 1));
+  }, [pageCount]);
 
   const safePage = Math.min(page, pageCount - 1);
   const pageItems = useMemo(
