@@ -17,29 +17,6 @@ export namespace config {
 
 }
 
-export namespace desktop {
-	
-	export class PricingEntry {
-	    model: string;
-	    input_price_per_m: number;
-	    cached_price_per_m: number;
-	    output_price_per_m: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new PricingEntry(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.model = source["model"];
-	        this.input_price_per_m = source["input_price_per_m"];
-	        this.cached_price_per_m = source["cached_price_per_m"];
-	        this.output_price_per_m = source["output_price_per_m"];
-	    }
-	}
-
-}
-
 export namespace model {
 	
 	export class CacheSavingsResponse {
@@ -132,6 +109,26 @@ export namespace model {
 	        this.cache_creation_tokens = source["cache_creation_tokens"];
 	        this.output_tokens = source["output_tokens"];
 	        this.cache_hit_rate = source["cache_hit_rate"];
+	    }
+	}
+	export class PricingEntry {
+	    model: string;
+	    input_price_per_m: number;
+	    cached_price_per_m: number;
+	    cache_creation_price_per_m: number;
+	    output_price_per_m: number;
+
+	    static createFrom(source: any = {}) {
+	        return new PricingEntry(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.model = source["model"];
+	        this.input_price_per_m = source["input_price_per_m"];
+	        this.cached_price_per_m = source["cached_price_per_m"];
+	        this.cache_creation_price_per_m = source["cache_creation_price_per_m"];
+	        this.output_price_per_m = source["output_price_per_m"];
 	    }
 	}
 	export class ProjectStat {

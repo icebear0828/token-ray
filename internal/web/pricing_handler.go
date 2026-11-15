@@ -5,42 +5,21 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"ai-flight-dashboard/internal/calculator"
 	"ai-flight-dashboard/internal/config"
 	"ai-flight-dashboard/internal/dashboard"
 	"ai-flight-dashboard/internal/db"
+	"ai-flight-dashboard/internal/model"
 )
 
-type PricingEntry struct {
-	Model                  string  `json:"model"`
-	InputPricePerM         float64 `json:"input_price_per_m"`
-	CachedPricePerM        float64 `json:"cached_price_per_m"`
-	CacheCreationPricePerM float64 `json:"cache_creation_price_per_m"`
-	OutputPricePerM        float64 `json:"output_price_per_m"`
-}
-
 func handleGetPricing(w http.ResponseWriter, r *http.Request, calc *calculator.Calculator) {
-	models := calc.ListModels()
-	sort.Strings(models)
-	var entries []PricingEntry
-	for _, m := range models {
-		price, _ := calc.GetModelPrice(m)
-		entries = append(entries, PricingEntry{
-			Model:                  m,
-			InputPricePerM:         price.InputPricePerM,
-			CachedPricePerM:        price.CachedPricePerM,
-			CacheCreationPricePerM: price.CacheCreationPricePerM,
-			OutputPricePerM:        price.OutputPricePerM,
-		})
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(entries)
+	json.NewEncoder(w).Encode(dashboard.BuildPricingEntries(calc))
 }
 
 func handlePutPricing(w http.ResponseWriter, r *http.Request, database *db.DB, calc *calculator.Calculator, statsCache *dashboard.StatsCache) {
-	var entries []PricingEntry
+	var entries []model.PricingEntry
 	if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return

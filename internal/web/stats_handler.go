@@ -3,7 +3,6 @@ package web
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"ai-flight-dashboard/internal/calculator"
 	"ai-flight-dashboard/internal/dashboard"
@@ -64,39 +63,12 @@ func handleStats(w http.ResponseWriter, r *http.Request, database *db.DB, calc *
 }
 
 func handleCacheSavings(w http.ResponseWriter, r *http.Request, database *db.DB, calc *calculator.Calculator) {
-	deviceID := r.URL.Query().Get("device")
-
-	records, err := database.QueryUsageRecords(time.Time{}, deviceID)
+	savings, err := dashboard.BuildCacheSavings(database, calc, r.URL.Query().Get("device"))
 	if err != nil {
 		http.Error(w, "query error", http.StatusInternalServerError)
 		return
 	}
 
-	var actualTotal, hypoTotal float64
-	var totalInput, totalCached int
-
-	for _, rec := range records {
-		actual, _ := calc.CalculateCost(rec.Model, rec.InputTokens, rec.CachedTokens, rec.CacheCreationTokens, rec.OutputTokens)
-		hypo, _ := calc.CalculateCostNoCaching(rec.Model, rec.InputTokens, rec.CachedTokens, rec.CacheCreationTokens, rec.OutputTokens)
-		actualTotal += actual
-		hypoTotal += hypo
-		totalInput += rec.InputTokens
-		totalCached += rec.CachedTokens
-	}
-
-	saved := hypoTotal - actualTotal
-	savedPct := 0.0
-	if hypoTotal > 0 {
-		savedPct = (saved / hypoTotal) * 100
-	}
-	hitRate := model.CacheHitRatePercent(totalInput, totalCached)
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(model.CacheSavingsResponse{
-		ActualCost:       actualTotal,
-		HypotheticalCost: hypoTotal,
-		Saved:            saved,
-		SavedPercent:     savedPct,
-		CacheHitRate:     hitRate,
-	})
+	json.NewEncoder(w).Encode(savings)
 }

@@ -4,7 +4,6 @@ import {updater} from '../models';
 import {model} from '../models';
 import {config} from '../models';
 import {context} from '../models';
-import {desktop} from '../models';
 
 export function ApplyUpdate():Promise<void>;
 
@@ -16,7 +15,7 @@ export function GetConfig():Promise<config.AppConfig>;
 
 export function GetContext():Promise<context.Context>;
 
-export function GetPricing():Promise<Array<desktop.PricingEntry>>;
+export function GetPricing():Promise<Array<model.PricingEntry>>;
 
 export function GetStats(arg1:string,arg2:string):Promise<model.StatsResponse>;
 
