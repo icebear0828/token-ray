@@ -28,7 +28,8 @@
     "plugin_removed": "插件已卸载",
     "lan_enabled": "已加入局域网",
     "lan_disabled": "已退出局域网",
-    "action_failed": "操作失败"
+    "action_failed": "操作失败",
+    "dismiss": "关闭"
   },
   "filters": {
     "all_devices": "全部设备",

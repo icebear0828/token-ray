@@ -7,8 +7,11 @@ import React, {
   useState,
 } from "react";
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type ToastKind = "success" | "error";
+
+const MAX_VISIBLE_TOASTS = 3;
 
 interface ToastItem {
   id: number;
@@ -31,6 +34,7 @@ export const useToast = (): ToastContextValue => {
 };
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextIdRef = useRef(0);
 
@@ -41,7 +45,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const showToast = useCallback(
     (kind: ToastKind, message: string) => {
       const id = ++nextIdRef.current;
-      setToasts((prev) => [...prev.slice(-3), { id, kind, message }]);
+      setToasts((prev) => [...prev.slice(-(MAX_VISIBLE_TOASTS - 1)), { id, kind, message }]);
       window.setTimeout(() => dismiss(id), 3200);
     },
     [dismiss]
@@ -74,7 +78,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               <button
                 type="button"
                 onClick={() => dismiss(toast.id)}
-                aria-label="Dismiss"
+                aria-label={t("toasts.dismiss")}
                 className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
                 <X className="h-3.5 w-3.5" />

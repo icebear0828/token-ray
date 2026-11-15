@@ -28,7 +28,8 @@
     "plugin_removed": "Plugin removed",
     "lan_enabled": "Joined the LAN",
     "lan_disabled": "Left the LAN",
-    "action_failed": "Action failed"
+    "action_failed": "Action failed",
+    "dismiss": "Dismiss"
   },
   "filters": {
     "all_devices": "All Devices",
