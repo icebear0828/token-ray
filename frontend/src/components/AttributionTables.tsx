@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useDeferredValue, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FolderGit2, Search } from "lucide-react";
 import { CurrencyCode, ModelStats, ProjectStat, SourceStats } from "../types/telemetry";
@@ -33,6 +33,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
 }) => {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [sortBy, setSortBy] = useState<"cost" | "tokens" | "cache">("cost");
 
   const flattenedModels = useMemo(() => {
@@ -45,7 +46,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
         });
       }
     }
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     const filtered = q
       ? rows.filter(
           (r) =>
@@ -62,14 +63,14 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
       }
       return b.total_cost - a.total_cost;
     });
-  }, [sources, query, sortBy]);
+  }, [sources, deferredQuery, sortBy]);
 
   const filteredProjects = useMemo(() => {
     const list = projects ?? [];
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     const filtered = q ? list.filter((p) => p.project.toLowerCase().includes(q)) : list;
     return [...filtered].sort((a, b) => b.total_cost - a.total_cost);
-  }, [projects, query]);
+  }, [projects, deferredQuery]);
 
   const totalProjectCost = useMemo(
     () => (projects ?? []).reduce((acc, p) => acc + (p.total_cost || 0), 0),

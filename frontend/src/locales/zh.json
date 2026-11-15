@@ -13,6 +13,7 @@
     "loading": "正在读取本机用量数据…",
     "load_error_title": "无法连接本地仪表盘服务",
     "load_error_hint": "请确认 dashboard 进程已启动；桌面版请检查系统日志。",
+    "render_error_title": "该区块渲染失败",
     "refresh_error": "刷新失败",
     "retry": "重试"
   },

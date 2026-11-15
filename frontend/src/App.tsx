@@ -23,6 +23,7 @@ import { DrawerType, SlideOverDrawers } from "./components/SlideOverDrawers";
 import { SourceIcon } from "./components/SourceBadge";
 import { SourceShareChart } from "./components/SourceShareChart";
 import { TokenTaxonomyStrip } from "./components/TokenTaxonomyStrip";
+import { ErrorBoundary } from "./ErrorBoundary";
 import {
   CurrencyCode,
   DashboardData,
@@ -293,6 +294,30 @@ export function App() {
 
   const isPaused = Boolean(data?.is_paused);
   const isDesktop = isDesktopRuntime();
+
+  // Local fallback so one broken section cannot blank the whole dashboard.
+  const renderSectionError = (error: Error, reset: () => void) => (
+    <div
+      role="alert"
+      className="rounded-xl border border-rose-200 bg-white p-5 text-xs text-rose-700 shadow-sm"
+    >
+      <div className="flex items-center gap-2 font-semibold">
+        <AlertTriangle className="h-4 w-4" />
+        {t("app.render_error_title")}
+      </div>
+      <p className="mt-2 break-all rounded-lg bg-rose-50 px-3 py-2 font-mono-num text-[11px]">
+        {error.message}
+      </p>
+      <button
+        type="button"
+        onClick={reset}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+        {t("app.retry")}
+      </button>
+    </div>
+  );
 
   // Radial gauge geometry for Cache Hit Rate KPI
   const gaugeRadius = 18;
@@ -823,62 +848,70 @@ export function App() {
         {/* ===================================================================
             5. VISUAL ANALYTICS CHARTS (WINDOW-SCOPED TREND + CLI SOURCE SHARE)
            =================================================================== */}
-        <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <div className="lg:col-span-7">
-            <DailyCostChart
-              data={data?.charts?.daily_costs ?? []}
-              granularity={data?.charts?.granularity ?? "daily"}
-              period={selectedWindow}
-              currency={currency}
-              loading={isSummaryLoading}
-            />
-          </div>
-          <div className="lg:col-span-5">
-            <SourceShareChart
-              toolShare={data?.charts?.tool_share ?? []}
-              sources={data?.sources ?? []}
-              activeSource={selectedSource}
-              onSelectSource={setSelectedSource}
-              currency={currency}
-            />
-          </div>
-        </section>
+        <ErrorBoundary fallback={renderSectionError}>
+          <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            <div className="lg:col-span-7">
+              <DailyCostChart
+                data={data?.charts?.daily_costs ?? []}
+                granularity={data?.charts?.granularity ?? "daily"}
+                period={selectedWindow}
+                currency={currency}
+                loading={isSummaryLoading}
+              />
+            </div>
+            <div className="lg:col-span-5">
+              <SourceShareChart
+                toolShare={data?.charts?.tool_share ?? []}
+                sources={data?.sources ?? []}
+                activeSource={selectedSource}
+                onSelectSource={setSelectedSource}
+                currency={currency}
+              />
+            </div>
+          </section>
+        </ErrorBoundary>
 
         {/* ===================================================================
             6. GITHUB-STYLE ACTIVITY HEATMAP MATRIX
            =================================================================== */}
-        <ActivityHeatmap
-          data={data?.charts?.calendar_heatmap ?? []}
-          currency={currency}
-        />
+        <ErrorBoundary fallback={renderSectionError}>
+          <ActivityHeatmap
+            data={data?.charts?.calendar_heatmap ?? []}
+            currency={currency}
+          />
+        </ErrorBoundary>
 
         {/* ===================================================================
             7. TWO-STAGE PROGRESSIVE ATTRIBUTION TABLES (MODELS & PROJECTS)
            =================================================================== */}
-        <AttributionTables
-          sources={data?.sources ?? []}
-          projects={data?.projects}
-          windowLabel={selectedWindow}
-          isHydratingDetails={isHydratingDetails}
-          currency={currency}
-        />
+        <ErrorBoundary fallback={renderSectionError}>
+          <AttributionTables
+            sources={data?.sources ?? []}
+            projects={data?.projects}
+            windowLabel={selectedWindow}
+            isHydratingDetails={isHydratingDetails}
+            currency={currency}
+          />
+        </ErrorBoundary>
       </main>
 
       {/* =====================================================================
           8. SLIDE-OVER DRAWERS (LAN RADAR, DEVICES, PRICING, SYSTEM CONFIG)
          ===================================================================== */}
-      <SlideOverDrawers
-        activeDrawer={activeDrawer}
-        onClose={() => {
-          setActiveDrawer(null);
-          refreshSources();
-        }}
-        currency={currency}
-        onDataMutated={() => {
-          loadTelemetry(true);
-          refreshSources();
-        }}
-      />
+      <ErrorBoundary fallback={renderSectionError}>
+        <SlideOverDrawers
+          activeDrawer={activeDrawer}
+          onClose={() => {
+            setActiveDrawer(null);
+            refreshSources();
+          }}
+          currency={currency}
+          onDataMutated={() => {
+            loadTelemetry(true);
+            refreshSources();
+          }}
+        />
+      </ErrorBoundary>
     </div>
   );
 }
