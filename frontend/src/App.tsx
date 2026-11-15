@@ -72,6 +72,18 @@ const rememberStats = (
   }
 };
 
+const mergeHydrated = (summary: DashboardData, details: DashboardData): DashboardData => ({
+  ...summary,
+  sources: details.sources,
+  projects: details.projects ?? [],
+  is_paused: details.is_paused ?? summary.is_paused,
+});
+
+// The backend cache makes consecutive polls return identical payloads when no
+// new logs arrived; this signature lets the poll skip the resulting re-render.
+const telemetrySignature = (summary: DashboardData, details: DashboardData) =>
+  `${JSON.stringify(summary)}\u0000${JSON.stringify(details)}`;
+
 export function App() {
   const { t, i18n } = useTranslation();
 
@@ -106,6 +118,7 @@ export function App() {
   const requestSeqRef = useRef<number>(0);
   const abortRef = useRef<AbortController | null>(null);
   const statsCacheRef = useRef<Map<string, DashboardData>>(new Map());
+  const pollSignatureRef = useRef<string>("");
 
   const refreshSources = useCallback(() => {
     fetchSources()
@@ -153,7 +166,35 @@ export function App() {
           { signal: controller.signal }
         );
         if (seq !== requestSeqRef.current) return;
-        const preservePrevious = isBackgroundPoll || Boolean(cached);
+
+        if (isBackgroundPoll) {
+          // Background polls skip both renders entirely when nothing changed.
+          const detailsRes = await fetchStats(
+            {
+              device: selectedDevice,
+              source: selectedSource,
+              period: selectedWindow,
+              detail: "details",
+            },
+            { signal: controller.signal }
+          );
+          if (seq !== requestSeqRef.current) return;
+          setIsSummaryLoading(false);
+          setLoadError("");
+          const signature = telemetrySignature(summaryRes, detailsRes);
+          if (signature === pollSignatureRef.current) {
+            setIsHydratingDetails(false);
+            return;
+          }
+          pollSignatureRef.current = signature;
+          const hydrated = mergeHydrated(summaryRes, detailsRes);
+          rememberStats(statsCacheRef.current, cacheKey, hydrated);
+          setData(hydrated);
+          setIsHydratingDetails(false);
+          return;
+        }
+
+        const preservePrevious = Boolean(cached);
         setData((prev) => {
           const previousModels = new Map(
             (prev?.sources ?? []).map((source) => [source.name, source.models])
@@ -188,12 +229,8 @@ export function App() {
         if (seq !== requestSeqRef.current) return;
         // A successful details response is authoritative even when it is
         // empty: the selected window/source may have no usage.
-        const hydrated: DashboardData = {
-          ...summaryRes,
-          sources: detailsRes.sources,
-          projects: detailsRes.projects ?? [],
-          is_paused: detailsRes.is_paused ?? summaryRes.is_paused,
-        };
+        const hydrated = mergeHydrated(summaryRes, detailsRes);
+        pollSignatureRef.current = telemetrySignature(summaryRes, detailsRes);
         rememberStats(statsCacheRef.current, cacheKey, hydrated);
         setData(hydrated);
         setIsHydratingDetails(false);
