@@ -132,11 +132,35 @@
       "cache_creation_price_per_m": 12.5,
       "output_price_per_m": 50
     },
+    "claude-fable-5-2": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
+    },
+    "claude-fable-5-2-fast": {
+      "input_price_per_m": 16,
+      "cached_price_per_m": 0.4,
+      "cache_creation_price_per_m": 20,
+      "output_price_per_m": 80
+    },
+    "claude-fable-5-2@default": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
+    },
     "claude-fable-5.1": {
       "input_price_per_m": 10,
       "cached_price_per_m": 0.25,
       "cache_creation_price_per_m": 12.5,
       "output_price_per_m": 50
+    },
+    "claude-fable-5.2": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
     },
     "claude-fable-5@default": {
       "input_price_per_m": 10,
@@ -197,6 +221,24 @@
       "cached_price_per_m": 0.25,
       "cache_creation_price_per_m": 12.5,
       "output_price_per_m": 50
+    },
+    "claude-mythos-5-2": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
+    },
+    "claude-mythos-5-2-fast": {
+      "input_price_per_m": 16,
+      "cached_price_per_m": 0.4,
+      "cache_creation_price_per_m": 20,
+      "output_price_per_m": 80
+    },
+    "claude-mythos-5-2@default": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
     },
     "claude-mythos-preview": {
       "input_price_per_m": 10,
@@ -298,6 +340,12 @@
       "input_price_per_m": 5,
       "cached_price_per_m": 0.5,
       "cache_creation_price_per_m": 6.25,
+      "output_price_per_m": 25
+    },
+    "claude-opus-4.7": {
+      "input_price_per_m": 5,
+      "cached_price_per_m": 0.5,
+      "cache_creation_price_per_m": 0,
       "output_price_per_m": 25
     },
     "claude-opus-4.8": {
@@ -509,6 +557,12 @@
       "cached_price_per_m": 0.01,
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 1.6
+    },
+    "deepseek-flash-latest": {
+      "input_price_per_m": 0.3,
+      "cached_price_per_m": 0.006,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 1.2
     },
     "deepseek-llama3.3-70b": {
       "input_price_per_m": 0.2,
@@ -1074,6 +1128,12 @@
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 4.5
     },
+    "gemini-3.1-flash-tts": {
+      "input_price_per_m": 2,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 40
+    },
     "gemini-3.1-flash-tts-preview": {
       "input_price_per_m": 1,
       "cached_price_per_m": 0.1,
@@ -1175,6 +1235,30 @@
       "cached_price_per_m": 0.2,
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 20
+    },
+    "gemini-4-carbon": {
+      "input_price_per_m": 2,
+      "cached_price_per_m": 0.1,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 10
+    },
+    "gemini-4-carbon-cyber-permissive": {
+      "input_price_per_m": 4,
+      "cached_price_per_m": 0.2,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 20
+    },
+    "gemini-4-hydrogen": {
+      "input_price_per_m": 1.5,
+      "cached_price_per_m": 0.075,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 7.5
+    },
+    "gemini-decision-1": {
+      "input_price_per_m": 0.1,
+      "cached_price_per_m": 0.01,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 0
     },
     "gemini-exp-1206": {
       "input_price_per_m": 0.3,
@@ -2309,6 +2393,12 @@
       "cached_price_per_m": 0.16,
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 6.4
+    },
+    "qwen-max-latest": {
+      "input_price_per_m": 2,
+      "cached_price_per_m": 0.25,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 6
     },
     "qwen-mt-plus": {
       "input_price_per_m": 0.25,
