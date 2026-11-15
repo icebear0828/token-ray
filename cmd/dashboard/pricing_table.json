@@ -1992,6 +1992,12 @@
       "cache_creation_price_per_m": 0.125,
       "output_price_per_m": 0.5
     },
+    "gpt-6-luna-decisions": {
+      "input_price_per_m": 0.1,
+      "cached_price_per_m": 0.01,
+      "cache_creation_price_per_m": 0.125,
+      "output_price_per_m": 0
+    },
     "gpt-6-rosalind": {
       "input_price_per_m": 15,
       "cached_price_per_m": 1.5,
