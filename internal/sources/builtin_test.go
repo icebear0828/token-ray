@@ -124,6 +124,32 @@ func TestClaudePendingStartBeforeIgnoresOldUserAfterLaterBoundary(t *testing.T) 
 	}
 }
 
+func TestClaudePendingStartBeforeResetsAfterCompletedAssistant(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	content := `{"timestamp":"2026-05-07T11:13:00Z","type":"user"}` + "\n" +
+		`{"timestamp":"2026-05-07T11:13:02Z","type":"assistant","message":{"id":"msg1","type":"message","stop_reason":"end_turn","model":"claude-opus-4-7","usage":{"input_tokens":10,"output_tokens":50}}}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := claudePendingStartBefore(path, int64(len(content))); !got.IsZero() {
+		t.Fatalf("completed response must not leave a request start, got %s", got)
+	}
+}
+
+func TestClaudePendingStartBeforeKeepsStartForPartialAssistant(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	content := `{"timestamp":"2026-05-07T11:13:00Z","type":"user"}` + "\n" +
+		`{"timestamp":"2026-05-07T11:13:02Z","type":"assistant","message":{"id":"msg1","type":"message","stop_reason":null,"model":"claude-opus-4-7","usage":{"input_tokens":10,"output_tokens":50}}}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := claudePendingStartBefore(path, int64(len(content)))
+	want := time.Date(2026, 5, 7, 11, 13, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("partial response must keep the original start: expected %s, got %s", want, got)
+	}
+}
+
 func TestGeminiParserRejectsClaudeLines(t *testing.T) {
 	p := geminiParser{}
 	line := `{"timestamp":"2026-05-07T11:13:03Z","message":{"model":"claude-opus-4-7","type":"message","usage":{"input_tokens":10,"output_tokens":1}}}`

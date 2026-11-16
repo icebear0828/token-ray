@@ -161,7 +161,7 @@ func (p *claudeParser) ResetFile(path string, offset int64) {
 
 func (p *claudeParser) Parse(line string) (model.TokenUsage, string, bool) {
 	project := watcher.ExtractProjectNameFromLine(line)
-	entryType, entryTime, messageID := parseClaudeEnvelope(line)
+	entryType, entryTime, messageID, _ := parseClaudeEnvelope(line)
 
 	p.mu.Lock()
 	state := p.current
@@ -212,25 +212,27 @@ func (p *claudeParser) Parse(line string) (model.TokenUsage, string, bool) {
 }
 
 type claudeEnvelope struct {
-	Type      string `json:"type"`
-	Timestamp string `json:"timestamp"`
-	Message   struct {
-		ID        string `json:"id"`
-		Type      string `json:"type"`
-		Timestamp string `json:"timestamp"`
+	Type       string `json:"type"`
+	Timestamp  string `json:"timestamp"`
+	StopReason string `json:"stop_reason"`
+	Message    struct {
+		ID         string `json:"id"`
+		Type       string `json:"type"`
+		Timestamp  string `json:"timestamp"`
+		StopReason string `json:"stop_reason"`
 	} `json:"message"`
 }
 
-func parseClaudeEnvelope(line string) (entryType string, at time.Time, messageID string) {
+func parseClaudeEnvelope(line string) (entryType string, at time.Time, messageID string, completed bool) {
 	var env claudeEnvelope
 	if err := json.Unmarshal([]byte(line), &env); err != nil {
-		return "", time.Time{}, ""
+		return "", time.Time{}, "", false
 	}
 	at = parseClaudeTime(env.Timestamp)
 	if at.IsZero() {
 		at = parseClaudeTime(env.Message.Timestamp)
 	}
-	return env.Type, at, env.Message.ID
+	return env.Type, at, env.Message.ID, env.StopReason != "" || env.Message.StopReason != ""
 }
 
 func parseClaudeTime(value string) time.Time {
@@ -260,8 +262,15 @@ func claudePendingStartBefore(path string, limit int64) time.Time {
 	for offset < limit {
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
-			if entryType, at, _ := parseClaudeEnvelope(line); (entryType == "user" || entryType == "tool_result") && !at.IsZero() {
+			entryType, at, _, completed := parseClaudeEnvelope(line)
+			switch {
+			case (entryType == "user" || entryType == "tool_result") && !at.IsZero():
 				pending = at
+			case entryType == "assistant" && completed:
+				// A finished response closes the request. Leaving its start
+				// behind would charge a later synthetic assistant snapshot
+				// with the entire downtime gap.
+				pending = time.Time{}
 			}
 			offset += int64(len(line))
 		}
