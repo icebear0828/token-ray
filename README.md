@@ -16,6 +16,7 @@ AI Flight Dashboard 是一个 Go + React + Wails 应用。它通过被动扫描�
 - 按 TOTAL、CLAUDE、GEMINI、CODEX、ANTIGRAVITY、DSH、PI 来源切换统计视图。
 - 展示项目、模型、设备、Token、缓存读取、缓存写入、输出和总成本。
 - 展示缓存命中率，计算口径为 `cached_tokens / input_tokens * 100`。
+- 展示平均出字速度（`tok/s`），按带耗时记录的请求估算；当前支持 Claude Code 和 Codex。
 - 支持项目表和模型表折叠，适合长期运行后的大数据量视图。
 - LAN 雷达展示局域网设备，支持加入、退出、同步和手动重新加入。
 - 设置页支持模型价格、系统配置、额外监听目录和设备管理。

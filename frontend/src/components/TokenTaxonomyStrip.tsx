@@ -1,7 +1,13 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { PeriodStats } from "../types/telemetry";
-import { calcBaseInput, formatCompactNumber, formatExactNumber } from "../utils/formatters";
+import {
+  calcBaseInput,
+  formatCompactNumber,
+  formatExactNumber,
+  formatTokenRate,
+  tokenRatePerSecond,
+} from "../utils/formatters";
 
 interface TokenTaxonomyStripProps {
   period: PeriodStats;
@@ -18,6 +24,8 @@ export const TokenTaxonomyStrip: React.FC<TokenTaxonomyStripProps> = ({ period }
   const cacheRead = period.cached_tokens || 0;
   const cacheWrite = period.cache_creation_tokens || 0;
   const output = period.output_tokens || 0;
+  const outputRateValue = tokenRatePerSecond(period.timed_output_tokens, period.duration_ms);
+  const outputRate = formatTokenRate(period.timed_output_tokens, period.duration_ms);
 
   const totalVolume = Math.max(1, baseInput + cacheRead + cacheWrite + output);
 
@@ -128,7 +136,11 @@ export const TokenTaxonomyStrip: React.FC<TokenTaxonomyStripProps> = ({ period }
               >
                 {formatCompactNumber(seg.value)}
               </span>
-              <span className="truncate text-[11px] text-slate-400">{seg.label}</span>
+              <span className="truncate text-[11px] text-slate-400">
+                {seg.key === "output" && outputRateValue !== null
+                  ? `≈ ${outputRate} tok/s`
+                  : seg.label}
+              </span>
             </div>
           </div>
         ))}

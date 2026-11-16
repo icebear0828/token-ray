@@ -12,6 +12,9 @@ type ModelStats struct {
 	CachedTokens           int     `json:"cached_tokens"`
 	CacheCreationTokens    int     `json:"cache_creation_tokens"`
 	OutputTokens           int     `json:"output_tokens"`
+	TimedOutputTokens      int     `json:"timed_output_tokens"`
+	DurationMS             int64   `json:"duration_ms"`
+	TimedEvents            int     `json:"timed_events"`
 	TotalCost              float64 `json:"total_cost"`
 	CacheHitRate           float64 `json:"cache_hit_rate"`
 	InputPricePerM         float64 `json:"input_price_per_m"`
@@ -27,6 +30,9 @@ type SourceStats struct {
 	TotalCached        int          `json:"total_cached"`
 	TotalCacheCreation int          `json:"total_cache_creation"`
 	TotalOutput        int          `json:"total_output"`
+	TotalTimedOutput   int          `json:"timed_output_tokens"`
+	TotalDurationMS    int64        `json:"duration_ms"`
+	TotalTimedEvents   int          `json:"timed_events"`
 	TotalCost          float64      `json:"total_cost"`
 	TotalEvents        int          `json:"total_events"`
 	CacheHitRate       float64      `json:"cache_hit_rate"`
@@ -41,6 +47,9 @@ type PeriodCost struct {
 	CachedTokens        int     `json:"cached_tokens"`
 	CacheCreationTokens int     `json:"cache_creation_tokens"`
 	OutputTokens        int     `json:"output_tokens"`
+	TimedOutputTokens   int     `json:"timed_output_tokens"`
+	DurationMS          int64   `json:"duration_ms"`
+	TimedEvents         int     `json:"timed_events"`
 	CacheHitRate        float64 `json:"cache_hit_rate"`
 }
 
@@ -112,6 +121,9 @@ type ProjectStat struct {
 	CachedTokens        int     `json:"cached_tokens"`
 	CacheCreationTokens int     `json:"cache_creation_tokens"`
 	OutputTokens        int     `json:"output_tokens"`
+	TimedOutputTokens   int     `json:"timed_output_tokens"`
+	DurationMS          int64   `json:"duration_ms"`
+	TimedEvents         int     `json:"timed_events"`
 	TotalCost           float64 `json:"total_cost"`
 	CacheHitRate        float64 `json:"cache_hit_rate"`
 }

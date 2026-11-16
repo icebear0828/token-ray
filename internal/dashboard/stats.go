@@ -224,6 +224,9 @@ func buildPeriodCosts(database *db.DB, now time.Time, deviceID string, source st
 			CachedTokens:        bucket.CachedTokens,
 			CacheCreationTokens: bucket.CacheCreationTokens,
 			OutputTokens:        bucket.OutputTokens,
+			TimedOutputTokens:   bucket.TimedOutputTokens,
+			DurationMS:          bucket.DurationMS,
+			TimedEvents:         bucket.TimedEvents,
 			CacheHitRate:        model.CacheHitRatePercent(bucket.InputTokens, bucket.CachedTokens),
 		})
 	}
@@ -433,6 +436,9 @@ func buildSourcesFromModelStats(stats []db.ModelStat, calc *calculator.Calculato
 			CachedTokens:           s.CachedTokens,
 			CacheCreationTokens:    s.CacheCreationTokens,
 			OutputTokens:           s.OutputTokens,
+			TimedOutputTokens:      s.TimedOutputTokens,
+			DurationMS:             s.DurationMS,
+			TimedEvents:            s.TimedEvents,
 			TotalCost:              s.TotalCost,
 			CacheHitRate:           model.CacheHitRatePercent(s.InputTokens, s.CachedTokens),
 			InputPricePerM:         price.InputPricePerM,
@@ -444,6 +450,9 @@ func buildSourcesFromModelStats(stats []db.ModelStat, calc *calculator.Calculato
 		src.TotalCached += s.CachedTokens
 		src.TotalCacheCreation += s.CacheCreationTokens
 		src.TotalOutput += s.OutputTokens
+		src.TotalTimedOutput += s.TimedOutputTokens
+		src.TotalDurationMS += s.DurationMS
+		src.TotalTimedEvents += s.TimedEvents
 		src.TotalCost += s.TotalCost
 		src.TotalEvents += s.Events
 	}

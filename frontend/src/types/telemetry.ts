@@ -17,6 +17,9 @@ export interface PeriodStats {
   cached_tokens: number;
   cache_creation_tokens: number;
   output_tokens: number;
+  timed_output_tokens: number;
+  duration_ms: number;
+  timed_events: number;
   cost: number;
   cache_hit_rate: number; // 0-100
 }
@@ -28,6 +31,9 @@ export interface ModelStats {
   cached_tokens: number;
   cache_creation_tokens: number;
   output_tokens: number;
+  timed_output_tokens: number;
+  duration_ms: number;
+  timed_events: number;
   total_cost: number;
   cache_hit_rate: number;
   input_price_per_m: number;
@@ -42,6 +48,9 @@ export interface SourceStats {
   total_cached: number;
   total_cache_creation: number;
   total_output: number;
+  timed_output_tokens: number;
+  duration_ms: number;
+  timed_events: number;
   total_cost: number;
   total_events: number;
   cache_hit_rate: number;
@@ -55,6 +64,9 @@ export interface ProjectStat {
   cached_tokens: number;
   cache_creation_tokens: number;
   output_tokens: number;
+  timed_output_tokens: number;
+  duration_ms: number;
+  timed_events: number;
   total_cost: number;
   cache_hit_rate: number;
 }

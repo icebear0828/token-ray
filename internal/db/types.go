@@ -12,6 +12,9 @@ type ModelStat struct {
 	CachedTokens        int
 	CacheCreationTokens int
 	OutputTokens        int
+	TimedOutputTokens   int
+	DurationMS          int64
+	TimedEvents         int
 	TotalCost           float64
 }
 type SourceTotalStat struct {
@@ -34,6 +37,7 @@ const (
 	BucketDaily   = "daily"
 	BucketMonthly = "monthly"
 )
+
 type PeriodStatsBucket struct {
 	Label               string
 	Cost                float64
@@ -41,6 +45,9 @@ type PeriodStatsBucket struct {
 	CachedTokens        int
 	CacheCreationTokens int
 	OutputTokens        int
+	TimedOutputTokens   int
+	DurationMS          int64
+	TimedEvents         int
 }
 
 // UsageRecord represents a single stored usage record for per-row analysis.

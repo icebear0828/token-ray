@@ -27,6 +27,8 @@ func initSchema(conn *sql.DB) error {
 		cached_tokens INTEGER NOT NULL,
 		cache_creation_tokens INTEGER DEFAULT 0,
 		output_tokens INTEGER NOT NULL,
+		duration_ms INTEGER NOT NULL DEFAULT 0,
+		timed_output_tokens INTEGER NOT NULL DEFAULT 0,
 		cost_usd REAL NOT NULL,
 		file_path TEXT DEFAULT '',
 		device_id TEXT DEFAULT 'local',
@@ -75,6 +77,8 @@ func initSchema(conn *sql.DB) error {
 		"ALTER TABLE usage_records ADD COLUMN project TEXT DEFAULT 'Default'",
 		"ALTER TABLE usage_records ADD COLUMN superseded INTEGER DEFAULT 0",
 		"ALTER TABLE usage_records ADD COLUMN updated_at DATETIME",
+		"ALTER TABLE usage_records ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE usage_records ADD COLUMN timed_output_tokens INTEGER NOT NULL DEFAULT 0",
 	} {
 		if err := execMigration(conn, stmt, true); err != nil {
 			return err

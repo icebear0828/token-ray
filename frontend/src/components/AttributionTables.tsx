@@ -8,7 +8,9 @@ import {
   formatCost,
   formatExactNumber,
   formatPercent,
+  formatTokenRate,
   formatUnitPrice,
+  tokenRatePerSecond,
 } from "../utils/formatters";
 import { SourceBadge } from "./SourceBadge";
 
@@ -34,7 +36,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
-  const [sortBy, setSortBy] = useState<"cost" | "tokens" | "cache">("cost");
+  const [sortBy, setSortBy] = useState<"cost" | "tokens" | "cache" | "speed">("cost");
 
   const flattenedModels = useMemo(() => {
     const rows: FlattenedModelRow[] = [];
@@ -60,6 +62,11 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
       }
       if (sortBy === "cache") {
         return b.cache_hit_rate - a.cache_hit_rate;
+      }
+      if (sortBy === "speed") {
+        const rate = (row: FlattenedModelRow) =>
+          tokenRatePerSecond(row.timed_output_tokens, row.duration_ms) ?? -1;
+        return rate(b) - rate(a);
       }
       return b.total_cost - a.total_cost;
     });
@@ -94,7 +101,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
 
         <div className="flex items-center gap-1.5 text-[11px]">
           <span className="font-semibold tracking-wider text-slate-400 uppercase">SORT:</span>
-          {(["cost", "tokens", "cache"] as const).map((key) => (
+          {(["cost", "tokens", "cache", "speed"] as const).map((key) => (
             <button
               key={key}
               type="button"
@@ -105,7 +112,13 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
                   : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
               }`}
             >
-              {key === "cost" ? "COST" : key === "tokens" ? "TOKENS" : "CACHE HIT"}
+              {key === "cost"
+                ? "COST"
+                : key === "tokens"
+                  ? "TOKENS"
+                  : key === "cache"
+                    ? "CACHE HIT"
+                    : "SPEED"}
             </button>
           ))}
         </div>
@@ -137,6 +150,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
                 <th className="px-3 py-2.5 text-right">{t("tables.col_cached")}</th>
                 <th className="px-3 py-2.5 text-right">{t("tables.col_cache_write")}</th>
                 <th className="px-3 py-2.5 text-right">{t("tables.col_output")}</th>
+                <th className="px-3 py-2.5 text-right">{t("tables.col_speed")}</th>
                 <th className="px-3 py-2.5 text-right">{t("tables.col_hit_rate")}</th>
                 <th className="px-3 py-2.5 text-right">{t("tables.col_unit_price")}</th>
                 <th className="py-2.5 pr-5 pl-3 text-right">{t("tables.col_cost")}</th>
@@ -165,6 +179,9 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
                       <div className="ml-auto h-3.5 w-14 rounded bg-slate-100" />
                     </td>
                     <td className="px-3 py-3.5">
+                      <div className="ml-auto h-3.5 w-14 rounded bg-slate-100" />
+                    </td>
+                    <td className="px-3 py-3.5">
                       <div className="ml-auto h-3.5 w-16 rounded bg-slate-100" />
                     </td>
                     <td className="px-3 py-3.5">
@@ -177,7 +194,7 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
                 ))
               ) : flattenedModels.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-xs text-slate-400">
+                  <td colSpan={10} className="py-10 text-center text-xs text-slate-400">
                     {t("tables.empty_models")}
                   </td>
                 </tr>
@@ -227,6 +244,19 @@ export const AttributionTables: React.FC<AttributionTablesProps> = ({
                         title={formatExactNumber(row.output_tokens)}
                       >
                         {formatCompactNumber(row.output_tokens)}
+                      </td>
+                      <td
+                        className="font-mono-num px-3 py-3 text-right text-slate-700"
+                        title={
+                          row.timed_events > 0
+                            ? t("tables.speed_tooltip", { events: row.timed_events })
+                            : undefined
+                        }
+                      >
+                        {formatTokenRate(row.timed_output_tokens, row.duration_ms)}
+                        {tokenRatePerSecond(row.timed_output_tokens, row.duration_ms) !== null
+                          ? " tok/s"
+                          : ""}
                       </td>
                       <td className="px-3 py-3 text-right">
                         <div className="inline-flex items-center justify-end gap-2">
