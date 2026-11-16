@@ -56,6 +56,71 @@ func TestBuildStatsIncludesCacheHitRates(t *testing.T) {
 	assertApprox(t, stats.Projects[0].CacheHitRate, 25.0)
 }
 
+func TestBuildStatsExposesTimingCounters(t *testing.T) {
+	database := testutil.NewTestDB(t)
+	defer database.Close()
+	calc := testutil.NewTestCalc(t)
+
+	now := time.Now().UTC()
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{
+			Source:            "Claude Code",
+			Model:             "claude-opus-4-7",
+			Project:           "token",
+			InputTokens:       1000,
+			OutputTokens:      100,
+			DurationMS:        2000,
+			TimedOutputTokens: 100,
+			UUID:              "timed-1",
+		},
+		1.00,
+		now.Add(-10*time.Minute),
+		"/claude.jsonl",
+		"local",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{
+			Source:       "Claude Code",
+			Model:        "claude-opus-4-7",
+			Project:      "token",
+			InputTokens:  1000,
+			OutputTokens: 50,
+			UUID:         "untimed-1",
+		},
+		1.00,
+		now.Add(-9*time.Minute),
+		"/claude.jsonl",
+		"local",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := dashboard.BuildStats(database, calc, "local", "Claude Code", "ALL", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allPeriod := stats.Periods[len(stats.Periods)-1]
+	if allPeriod.TimedOutputTokens != 100 || allPeriod.DurationMS != 2000 || allPeriod.TimedEvents != 1 {
+		t.Fatalf("unexpected period timing: %+v", allPeriod)
+	}
+	if len(stats.Sources) != 1 || len(stats.Sources[0].Models) != 1 {
+		t.Fatalf("expected one source/model, got %+v", stats.Sources)
+	}
+	modelStats := stats.Sources[0].Models[0]
+	if modelStats.TimedOutputTokens != 100 || modelStats.DurationMS != 2000 || modelStats.TimedEvents != 1 {
+		t.Fatalf("unexpected model timing: %+v", modelStats)
+	}
+	if stats.Sources[0].TotalTimedOutput != 100 || stats.Sources[0].TotalDurationMS != 2000 || stats.Sources[0].TotalTimedEvents != 1 {
+		t.Fatalf("unexpected source timing: %+v", stats.Sources[0])
+	}
+	if len(stats.Projects) != 1 || stats.Projects[0].TimedOutputTokens != 100 || stats.Projects[0].DurationMS != 2000 || stats.Projects[0].TimedEvents != 1 {
+		t.Fatalf("unexpected project timing: %+v", stats.Projects)
+	}
+}
+
 func TestBuildStatsSummaryOmitsHeavyDetails(t *testing.T) {
 	database := testutil.NewTestDB(t)
 	defer database.Close()

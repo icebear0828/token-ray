@@ -10,6 +10,9 @@ interface PeriodCost {
   cached_tokens: number
   cache_creation_tokens: number
   output_tokens: number
+  timed_output_tokens: number
+  duration_ms: number
+  timed_events: number
   cache_hit_rate: number
 }
 
@@ -20,6 +23,9 @@ interface ModelStats {
   cached_tokens: number
   cache_creation_tokens: number
   output_tokens: number
+  timed_output_tokens: number
+  duration_ms: number
+  timed_events: number
   total_cost: number
   cache_hit_rate: number
   input_price_per_m: number
@@ -34,6 +40,9 @@ interface SourceStats {
   total_cached: number
   total_cache_creation: number
   total_output: number
+  timed_output_tokens: number
+  duration_ms: number
+  timed_events: number
   total_cost: number
   total_events: number
   cache_hit_rate: number
@@ -47,6 +56,9 @@ interface ProjectStat {
   cached_tokens: number
   cache_creation_tokens: number
   output_tokens: number
+  timed_output_tokens: number
+  duration_ms: number
+  timed_events: number
   total_cost: number
   cache_hit_rate: number
 }
@@ -114,6 +126,8 @@ GET /api/stats?device={device_id}&source={source_name}&period={period}&detail={f
 
 `detail` is optional. Omit it, or use `full`, to return the complete legacy payload plus chart aggregates. Use `summary` for a lightweight response containing periods, chart aggregates, source totals, devices, and pause state. Use `details` for model/project details that can be loaded after the summary.
 
+`timed_output_tokens`, `duration_ms` and `timed_events` describe measured generation samples. They are raw sums, not pre-divided rates: compute average visible-output speed as `timed_output_tokens * 1000 / duration_ms`. A value of `0` means "no timed request in this window", not zero speed. The duration covers the whole request interval, so it can include queueing, thinking, first-token wait and tool execution; it is not a decode-only or first-token metric. The current collectors provide timing for Claude Code and Codex; other sources leave these fields at `0`.
+
 Response:
 ```json
 {
@@ -125,6 +139,9 @@ Response:
       "cached_tokens": 30000,
       "cache_creation_tokens": 5000,
       "output_tokens": 8000,
+      "timed_output_tokens": 6400,
+      "duration_ms": 160000,
+      "timed_events": 40,
       "cache_hit_rate": 25.0
     }
   ],
@@ -147,6 +164,9 @@ Response:
       "total_cached": 5000,
       "total_cache_creation": 1000,
       "total_output": 2000,
+      "timed_output_tokens": 1600,
+      "duration_ms": 40000,
+      "timed_events": 10,
       "total_cost": 0.45,
       "total_events": 10,
       "cache_hit_rate": 33.3333333333,
@@ -158,6 +178,9 @@ Response:
           "cached_tokens": 5000,
           "cache_creation_tokens": 1000,
           "output_tokens": 2000,
+          "timed_output_tokens": 1600,
+          "duration_ms": 40000,
+          "timed_events": 10,
           "total_cost": 0.45,
           "cache_hit_rate": 33.3333333333
         }
@@ -172,6 +195,9 @@ Response:
       "cached_tokens": 5000,
       "cache_creation_tokens": 1000,
       "output_tokens": 2000,
+      "timed_output_tokens": 1600,
+      "duration_ms": 40000,
+      "timed_events": 10,
       "total_cost": 0.45,
       "cache_hit_rate": 33.3333333333
     }

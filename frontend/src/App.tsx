@@ -39,6 +39,8 @@ import {
   formatCost,
   formatExactNumber,
   formatPercent,
+  formatTokenRate,
+  tokenRatePerSecond,
 } from "./utils/formatters";
 
 const DEFAULT_SOURCES = [
@@ -321,6 +323,14 @@ export function App() {
     (currentPeriod.input_tokens || 0) + (currentPeriod.output_tokens || 0);
   const blendedCostPerM =
     totalVolumeTokens > 0 ? (currentPeriod.cost / totalVolumeTokens) * 1_000_000 : 0;
+  const outputRate = tokenRatePerSecond(
+    currentPeriod.timed_output_tokens,
+    currentPeriod.duration_ms
+  );
+  const outputRateLabel = formatTokenRate(
+    currentPeriod.timed_output_tokens,
+    currentPeriod.duration_ms
+  );
 
   // Estimated USD savings from cache hits (cached tokens billed at ~10% vs full input rate)
   const estCacheSavingsUsd = useMemo(() => {
@@ -793,7 +803,20 @@ export function App() {
             </div>
             <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
               <span>{t("kpi.total_tokens")}</span>
-              <span className="text-[11px] text-slate-400">{t("kpi.total_tokens_sub")}</span>
+              <span
+                className="text-[11px] text-slate-400"
+                title={
+                  outputRate !== null
+                    ? t("kpi.output_rate_tooltip", {
+                        events: currentPeriod.timed_events || 0,
+                      })
+                    : undefined
+                }
+              >
+                {outputRate !== null
+                  ? `≈ ${outputRateLabel} tok/s`
+                  : t("kpi.total_tokens_sub")}
+              </span>
             </div>
           </div>
 

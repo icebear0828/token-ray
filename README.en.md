@@ -16,6 +16,7 @@ It does not require patching Claude Code, Gemini CLI, Codex, Antigravity CLI, De
 - Switches stats by TOTAL, CLAUDE, GEMINI, CODEX, ANTIGRAVITY, DSH, and PI sources.
 - Shows project, model, device, token, cache read, cache creation, output, and cost metrics.
 - Shows cache hit rate as `cached_tokens / input_tokens * 100`.
+- Shows average output speed (`tok/s`) estimated from timed requests; currently collected for Claude Code and Codex.
 - Collapsible project and model tables for long-running datasets.
 - LAN radar for local peers, with join, leave, sync, and rejoin controls.
 - Settings UI for pricing, system config, extra watch directories, and device management.

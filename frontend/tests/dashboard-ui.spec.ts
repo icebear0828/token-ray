@@ -87,6 +87,72 @@ test('dashboard shows cache hit rate in KPIs and attribution tables', async ({ p
   await expect(page.getByRole('columnheader', { name: '缓存命中' }).first()).toBeVisible();
 });
 
+test('dashboard shows average output speed from timed requests', async ({ page }) => {
+  await page.route('**/api/stats?*', async (route) => {
+    await fulfillJSON(route, {
+      ...emptyStatsPayload,
+      periods: periods.map((period) => ({
+        ...period,
+        output_tokens: 100,
+        timed_output_tokens: 100,
+        duration_ms: 2000,
+        timed_events: 1,
+      })),
+      sources: [{
+        name: 'Codex',
+        total_input: 1000,
+        total_cached: 0,
+        total_cache_creation: 0,
+        total_output: 100,
+        timed_output_tokens: 100,
+        duration_ms: 2000,
+        timed_events: 1,
+        total_cost: 1.23,
+        total_events: 1,
+        cache_hit_rate: 0,
+        models: [{
+          model: 'gpt-5.5',
+          events: 1,
+          input_tokens: 1000,
+          cached_tokens: 0,
+          cache_creation_tokens: 0,
+          output_tokens: 100,
+          timed_output_tokens: 100,
+          duration_ms: 2000,
+          timed_events: 1,
+          total_cost: 1.23,
+          input_price_per_m: 2,
+          cached_price_per_m: 0.5,
+          cache_creation_price_per_m: 5,
+          output_price_per_m: 10,
+          cache_hit_rate: 0,
+        }],
+      }],
+      projects: [{
+        project: 'token',
+        events: 1,
+        input_tokens: 1000,
+        cached_tokens: 0,
+        cache_creation_tokens: 0,
+        output_tokens: 100,
+        timed_output_tokens: 100,
+        duration_ms: 2000,
+        timed_events: 1,
+        total_cost: 1.23,
+        cache_hit_rate: 0,
+      }],
+    });
+  });
+  await page.route('**/api/lan/scan', fulfillEmptyLANScan);
+  await page.route('**/api/lan/status', fulfillLANStatus);
+
+  await page.goto('/');
+
+  await expect(page.getByText('≈ 50 tok/s').first()).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '出字速度' })).toBeVisible();
+  await expect(page.getByText('50 tok/s').first()).toBeVisible();
+});
+
 test('dashboard shows cost intelligence charts', async ({ page }) => {
   const start = new Date('2026-05-10T00:00:00Z');
   const dateAt = (offset: number) => {

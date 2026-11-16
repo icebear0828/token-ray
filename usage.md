@@ -125,6 +125,20 @@ export AI_FLIGHT_DASHBOARD_DATA_DIR="$HOME/.ai-flight-dashboard"
 
 GUI 设置页可以配置额外监听目录。新增或移除目录后保存配置，运行中的 watcher 会动态更新。
 
+## 出字速度
+
+主面板的 Total Tokens 卡片、TOKEN 四分类的 OUTPUT 卡片和模型表 SPEED 列会显示 `tok/s`。它按所选时间窗口内**有耗时记录的请求**计算：
+
+```text
+tok/s = timed_output_tokens * 1000 / duration_ms
+```
+
+- 只有同时具备耗时和输出 token 的请求进入分子和分母；没有读数时显示 `—`，不显示 `0 tok/s`。
+- 耗时是请求总时长，可能包含排队、思考、首字等待和工具执行，不是纯解码速度，也不是首字延迟（TTFT）。
+- 当前只有 Claude Code 和 Codex 会采集耗时。Claude Code 用上一条 `user`/`tool_result` 到 `assistant` 完成的时间；Codex 从 session 日志按每次模型调用计时。
+- 升级前已入库的历史记录没有耗时，默认不参与速率计算；新产生的记录会自动带耗时。
+- 多设备/多模型合并时先分别累加原始计数，再在展示层相除，避免把不同设备的速率直接相加。
+
 ## 数据与配置
 
 默认数据目录：

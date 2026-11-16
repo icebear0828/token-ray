@@ -23,11 +23,13 @@ type codexSessionPayload struct {
 	CWD   string            `json:"cwd"`
 	Model string            `json:"model"`
 	Type  string            `json:"type"`
+	Role  string            `json:"role"`
 	Info  *codexSessionInfo `json:"info"`
 }
 
 type codexSessionInfo struct {
 	TotalTokenUsage codexSessionTokenUsage `json:"total_token_usage"`
+	LastTokenUsage  codexSessionTokenUsage `json:"last_token_usage"`
 }
 
 type codexSessionTokenUsage struct {
@@ -38,12 +40,14 @@ type codexSessionTokenUsage struct {
 }
 
 type codexSessionTotal struct {
-	id        string
-	cwd       string
-	model     string
-	ts        time.Time
-	tokens    codexSessionTokenUsage
-	hasTokens bool
+	id          string
+	cwd         string
+	model       string
+	ts          time.Time
+	tokens      codexSessionTokenUsage
+	hasTokens   bool
+	durationMS  int64
+	timedOutput int
 }
 
 func (s *Scanner) scanSessions(threads map[string]threadInfo, full bool, offsets map[string]int64) (int, bool, error) {
@@ -145,15 +149,17 @@ func (s *Scanner) scanSessionFile(path string, threads map[string]threadInfo, of
 		project = "Default"
 	}
 	usage := model.TokenUsage{
-		Source:       SourceName,
-		Model:        total.model,
-		Project:      project,
-		InputTokens:  total.tokens.InputTokens,
-		CachedTokens: total.tokens.CachedInputTokens,
-		OutputTokens: total.tokens.OutputTokens,
-		Thoughts:     total.tokens.ReasoningOutputTokens,
-		Timestamp:    total.ts,
-		UUID:         "codex-session:" + total.id,
+		Source:            SourceName,
+		Model:             total.model,
+		Project:           project,
+		InputTokens:       total.tokens.InputTokens,
+		CachedTokens:      total.tokens.CachedInputTokens,
+		OutputTokens:      total.tokens.OutputTokens,
+		Thoughts:          total.tokens.ReasoningOutputTokens,
+		DurationMS:        total.durationMS,
+		TimedOutputTokens: total.timedOutput,
+		Timestamp:         total.ts,
+		UUID:              "codex-session:" + total.id,
 	}
 	if err := s.sink.Emit(usage, path); err != nil {
 		return 0, true, err
@@ -177,11 +183,21 @@ func parseCodexSessionFile(path string, fallbackTime time.Time) (codexSessionTot
 	total := codexSessionTotal{ts: fallbackTime.UTC()}
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
+	var boundary time.Time
+	var requestStart time.Time
+	var modelEnd time.Time
+	var toolAfterOutput time.Time
+	var toolResetPending bool
+	var previousTotal codexSessionTokenUsage
+	var havePreviousTotal bool
 	for scanner.Scan() {
 		var line codexSessionLine
 		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
 			continue
 		}
+		at, _ := time.Parse(time.RFC3339Nano, line.Timestamp)
+		at = at.UTC()
+
 		switch line.Type {
 		case "session_meta":
 			if line.Payload.ID != "" {
@@ -193,18 +209,96 @@ func parseCodexSessionFile(path string, fallbackTime time.Time) (codexSessionTot
 			if line.Payload.Model != "" {
 				total.model = line.Payload.Model
 			}
+		case "turn_context":
+			if !at.IsZero() {
+				boundary = at
+				requestStart, modelEnd, toolAfterOutput = time.Time{}, time.Time{}, time.Time{}
+				toolResetPending = false
+			}
+		case "response_item":
+			payloadType := line.Payload.Type
+			switch {
+			case strings.HasSuffix(payloadType, "_output"):
+				if !at.IsZero() {
+					boundary = at
+					if !modelEnd.IsZero() {
+						toolAfterOutput = at
+						toolResetPending = true
+					}
+				}
+			case payloadType == "message" && line.Payload.Role == "user":
+				if !at.IsZero() {
+					boundary = at
+					requestStart, modelEnd, toolAfterOutput = time.Time{}, time.Time{}, time.Time{}
+					toolResetPending = false
+				}
+			case payloadType == "reasoning" || strings.HasSuffix(payloadType, "_call") ||
+				(payloadType == "message" && line.Payload.Role == "assistant"):
+				if !at.IsZero() {
+					if toolResetPending {
+						// A model item after a tool result belongs to the next
+						// request, so its clock starts at that tool result.
+						requestStart = boundary
+						toolResetPending = false
+						toolAfterOutput = time.Time{}
+					} else if requestStart.IsZero() && !boundary.IsZero() {
+						requestStart = boundary
+					}
+					modelEnd = at
+				}
+			}
 		case "event_msg":
-			if line.Payload.Type != "token_count" || line.Payload.Info == nil {
-				continue
-			}
-			tokens := line.Payload.Info.TotalTokenUsage
-			if tokens.InputTokens == 0 && tokens.CachedInputTokens == 0 && tokens.OutputTokens == 0 {
-				continue
-			}
-			total.tokens = tokens
-			total.hasTokens = true
-			if parsed, err := time.Parse(time.RFC3339Nano, line.Timestamp); err == nil {
-				total.ts = parsed.UTC()
+			switch line.Payload.Type {
+			case "task_started", "turn_aborted", "user_message":
+				if !at.IsZero() {
+					boundary = at
+					requestStart, modelEnd, toolAfterOutput = time.Time{}, time.Time{}, time.Time{}
+					toolResetPending = false
+				}
+			case "token_count":
+				if line.Payload.Info == nil {
+					continue
+				}
+				tokens := line.Payload.Info.TotalTokenUsage
+				if tokens.InputTokens == 0 && tokens.CachedInputTokens == 0 && tokens.OutputTokens == 0 {
+					continue
+				}
+				duplicate := havePreviousTotal && tokens == previousTotal
+				previousTotal = tokens
+				havePreviousTotal = true
+
+				if !duplicate {
+					start := requestStart
+					if start.IsZero() {
+						start = boundary
+					}
+					end := at
+					// token_count can be flushed after local tools finish. When
+					// a tool result and the count share one flush, stop at the
+					// last model item instead of charging tool execution time.
+					if !toolAfterOutput.IsZero() && !at.IsZero() && !modelEnd.IsZero() &&
+						at.Sub(toolAfterOutput) <= 100*time.Millisecond {
+						end = modelEnd
+					}
+					last := line.Payload.Info.LastTokenUsage
+					if !start.IsZero() && !end.IsZero() && last.OutputTokens > 0 {
+						if duration := end.Sub(start).Milliseconds(); duration > 0 {
+							total.durationMS += duration
+							total.timedOutput += last.OutputTokens
+						}
+					}
+				}
+
+				total.tokens = tokens
+				total.hasTokens = true
+				if !at.IsZero() {
+					total.ts = at
+					if at.After(boundary) {
+						boundary = at
+					}
+				}
+				requestStart, modelEnd, toolAfterOutput = time.Time{}, time.Time{}, time.Time{}
+				toolResetPending = false
 			}
 		}
 	}

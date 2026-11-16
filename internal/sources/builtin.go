@@ -1,7 +1,9 @@
 package sources
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +54,7 @@ func NewClaudeSource(home string) *JSONLSource {
 	return newJSONLSource(
 		source.Descriptor{ID: "claude-code", Source: "Claude Code", Label: "CLAUDE", Builtin: true},
 		[]string{dir},
-		claudeParser{},
+		newClaudeParser(),
 	)
 }
 
@@ -116,20 +118,172 @@ func existingDirs(dirs []string) []string {
 	return out
 }
 
-type claudeParser struct{}
+// claudeParser derives one request duration from the transcript itself: the
+// preceding user/tool_result entry marks the request start, and the assistant
+// entry carrying usage marks completion. Assistant snapshots that share a
+// message id reuse that same start instead of measuring from one another.
+type claudeParser struct {
+	mu      sync.Mutex
+	states  map[string]*claudeFileState
+	current *claudeFileState
+}
 
-func (claudeParser) Parse(line string) (model.TokenUsage, string, bool) {
+type claudeFileState struct {
+	pendingStart time.Time
+	msgStarts    map[string]time.Time
+}
+
+func newClaudeParser() *claudeParser {
+	return &claudeParser{states: make(map[string]*claudeFileState)}
+}
+
+func (p *claudeParser) ResetFile(path string, offset int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.states == nil {
+		p.states = make(map[string]*claudeFileState)
+	}
+	if offset == 0 {
+		p.current = &claudeFileState{msgStarts: make(map[string]time.Time)}
+		p.states[path] = p.current
+		return
+	}
+	if state, ok := p.states[path]; ok {
+		p.current = state
+		return
+	}
+	state := &claudeFileState{msgStarts: make(map[string]time.Time)}
+	state.pendingStart = claudePendingStartBefore(path, offset)
+	p.states[path] = state
+	p.current = state
+}
+
+func (p *claudeParser) Parse(line string) (model.TokenUsage, string, bool) {
 	project := watcher.ExtractProjectNameFromLine(line)
+	entryType, entryTime, messageID, _ := parseClaudeEnvelope(line)
+
+	p.mu.Lock()
+	state := p.current
+	p.mu.Unlock()
+
+	if state != nil && (entryType == "user" || entryType == "tool_result") && !entryTime.IsZero() {
+		p.mu.Lock()
+		state.pendingStart = entryTime
+		state.msgStarts = make(map[string]time.Time)
+		p.mu.Unlock()
+	}
+
 	u, ok := watcher.ParseLine(line)
 	if !ok || u.Source != "Claude Code" {
 		return model.TokenUsage{}, project, false
 	}
+
+	if u.OutputTokens > 0 {
+		p.mu.Lock()
+		if state != nil {
+			start := state.pendingStart
+			startKey := messageID
+			if startKey == "" {
+				startKey = u.UUID
+			}
+			if startKey != "" {
+				if known, found := state.msgStarts[startKey]; found {
+					start = known
+				} else if !start.IsZero() {
+					state.msgStarts[startKey] = start
+					// Consume the boundary for this response; snapshots sharing
+					// the message id still read their start from msgStarts.
+					state.pendingStart = time.Time{}
+				}
+			} else if !start.IsZero() {
+				state.pendingStart = time.Time{}
+			}
+			if !start.IsZero() && !entryTime.IsZero() {
+				if duration := entryTime.Sub(start).Milliseconds(); duration > 0 {
+					u.DurationMS = duration
+					u.TimedOutputTokens = u.OutputTokens
+				}
+			}
+		}
+		p.mu.Unlock()
+	}
 	return u, project, true
 }
 
-func (claudeParser) ProjectFromPath(path string) string { return watcher.ExtractProjectName(path) }
+type claudeEnvelope struct {
+	Type       string `json:"type"`
+	Timestamp  string `json:"timestamp"`
+	StopReason string `json:"stop_reason"`
+	Message    struct {
+		ID         string `json:"id"`
+		Type       string `json:"type"`
+		Timestamp  string `json:"timestamp"`
+		StopReason string `json:"stop_reason"`
+	} `json:"message"`
+}
 
-func (claudeParser) FallbackUUID(string, string, int64, model.TokenUsage) string { return "" }
+func parseClaudeEnvelope(line string) (entryType string, at time.Time, messageID string, completed bool) {
+	var env claudeEnvelope
+	if err := json.Unmarshal([]byte(line), &env); err != nil {
+		return "", time.Time{}, "", false
+	}
+	at = parseClaudeTime(env.Timestamp)
+	if at.IsZero() {
+		at = parseClaudeTime(env.Message.Timestamp)
+	}
+	return env.Type, at, env.Message.ID, env.StopReason != "" || env.Message.StopReason != ""
+}
+
+func parseClaudeTime(value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000Z"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+// claudePendingStartBefore recovers the last user/tool_result timestamp when a
+// scan resumes after a process restart. It runs once per file, not per tick.
+func claudePendingStartBefore(path string, limit int64) time.Time {
+	file, err := os.Open(path)
+	if err != nil {
+		return time.Time{}
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	var offset int64
+	var pending time.Time
+	for offset < limit {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			entryType, at, _, completed := parseClaudeEnvelope(line)
+			switch {
+			case (entryType == "user" || entryType == "tool_result") && !at.IsZero():
+				pending = at
+			case entryType == "assistant" && completed:
+				// A finished response closes the request. Leaving its start
+				// behind would charge a later synthetic assistant snapshot
+				// with the entire downtime gap.
+				pending = time.Time{}
+			}
+			offset += int64(len(line))
+		}
+		if err != nil {
+			break
+		}
+	}
+	return pending
+}
+
+func (p *claudeParser) ProjectFromPath(path string) string { return watcher.ExtractProjectName(path) }
+
+func (p *claudeParser) FallbackUUID(string, string, int64, model.TokenUsage) string { return "" }
 
 type geminiParser struct{}
 

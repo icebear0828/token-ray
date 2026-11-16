@@ -84,6 +84,31 @@ export function formatPercent(rate: number | undefined | null): string {
   return `${r.toFixed(1)}%`;
 }
 
+/**
+ * Average visible-output speed for the requests that carried timing.
+ * Returning null (not 0) keeps "no reading" distinct from "zero speed".
+ */
+export function tokenRatePerSecond(
+  timedOutputTokens: number | undefined | null,
+  durationMs: number | undefined | null
+): number | null {
+  const output = Number(timedOutputTokens ?? 0);
+  const duration = Number(durationMs ?? 0);
+  if (!(output > 0) || !(duration > 0)) return null;
+  return (output * 1000) / duration;
+}
+
+export function formatTokenRate(
+  timedOutputTokens: number | undefined | null,
+  durationMs: number | undefined | null
+): string {
+  const rate = tokenRatePerSecond(timedOutputTokens, durationMs);
+  if (rate === null) return "—";
+  if (rate < 0.1) return "<0.1";
+  if (rate < 10) return rate.toFixed(1);
+  return Math.round(rate).toLocaleString("en-US");
+}
+
 export interface SourceVisualTheme {
   id: string;
   color: string;       // Primary hex

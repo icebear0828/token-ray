@@ -122,6 +122,7 @@ func insertUsageWithTimeUpdatedAtExec(e sqlExecer, u model.TokenUsage, cost floa
 	if updatedAtTS.IsZero() {
 		updatedAtTS = time.Now().UTC()
 	}
+	durationMS, timedOutputTokens := normalizeTiming(u)
 	logTimestamp := formatLogTimestamp(logTS)
 	updatedAt := formatLogTimestamp(updatedAtTS)
 	supersededValue := 0
@@ -130,8 +131,8 @@ func insertUsageWithTimeUpdatedAtExec(e sqlExecer, u model.TokenUsage, cost floa
 	}
 	if u.UUID != "" {
 		query := `
-		INSERT INTO usage_records (uuid, log_timestamp, updated_at, source, model, project, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, cost_usd, file_path, device_id, superseded)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO usage_records (uuid, log_timestamp, updated_at, source, model, project, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, duration_ms, timed_output_tokens, cost_usd, file_path, device_id, superseded)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(device_id, uuid) WHERE uuid IS NOT NULL AND uuid != '' DO UPDATE SET
 			source = excluded.source,
 			model = excluded.model,
@@ -142,6 +143,8 @@ func insertUsageWithTimeUpdatedAtExec(e sqlExecer, u model.TokenUsage, cost floa
 			cached_tokens = excluded.cached_tokens,
 			cache_creation_tokens = excluded.cache_creation_tokens,
 			output_tokens = excluded.output_tokens,
+			duration_ms = CASE WHEN excluded.duration_ms > 0 THEN excluded.duration_ms ELSE usage_records.duration_ms END,
+			timed_output_tokens = CASE WHEN excluded.duration_ms > 0 THEN excluded.timed_output_tokens ELSE usage_records.timed_output_tokens END,
 			cost_usd = excluded.cost_usd,
 			file_path = CASE
 				WHEN excluded.file_path != '' THEN excluded.file_path
@@ -151,7 +154,7 @@ func insertUsageWithTimeUpdatedAtExec(e sqlExecer, u model.TokenUsage, cost floa
 			superseded = excluded.superseded
 		WHERE julianday(excluded.updated_at) >= julianday(COALESCE(usage_records.updated_at, usage_records.timestamp, usage_records.log_timestamp))
 		`
-		_, err := e.Exec(query, u.UUID, logTimestamp, updatedAt, u.Source, u.Model, u.Project, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens, cost, filePath, deviceID, supersededValue)
+		_, err := e.Exec(query, u.UUID, logTimestamp, updatedAt, u.Source, u.Model, u.Project, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens, durationMS, timedOutputTokens, cost, filePath, deviceID, supersededValue)
 		return err
 	}
 
@@ -166,11 +169,25 @@ func insertUsageWithTimeUpdatedAtExec(e sqlExecer, u model.TokenUsage, cost floa
 	}
 
 	query := `
-	INSERT OR IGNORE INTO usage_records (log_timestamp, updated_at, source, model, project, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, cost_usd, file_path, device_id, superseded)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT OR IGNORE INTO usage_records (log_timestamp, updated_at, source, model, project, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, duration_ms, timed_output_tokens, cost_usd, file_path, device_id, superseded)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := e.Exec(query, logTimestamp, updatedAt, u.Source, u.Model, u.Project, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens, cost, filePath, deviceID, supersededValue)
+	_, err := e.Exec(query, logTimestamp, updatedAt, u.Source, u.Model, u.Project, u.InputTokens, u.CachedTokens, u.CacheCreationTokens, u.OutputTokens, durationMS, timedOutputTokens, cost, filePath, deviceID, supersededValue)
 	return err
+}
+
+func normalizeTiming(u model.TokenUsage) (int64, int) {
+	if u.DurationMS <= 0 || u.TimedOutputTokens <= 0 {
+		return 0, 0
+	}
+	timedOutput := u.TimedOutputTokens
+	if timedOutput > u.OutputTokens {
+		timedOutput = u.OutputTokens
+	}
+	if timedOutput <= 0 {
+		return 0, 0
+	}
+	return u.DurationMS, timedOutput
 }
 
 func hasNewerSupersededLegacyRecordExec(e sqlExecer, u model.TokenUsage, logTimestamp string, filePath string, deviceID string, updatedAt string) (bool, error) {

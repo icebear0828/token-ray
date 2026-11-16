@@ -57,9 +57,15 @@ func (d *DB) QueryPeriodStatsBuckets(windows []PeriodStatsWindow, deviceID strin
 		appendPeriodAggregateExpr(&query, "cache_creation_tokens", conditional)
 		query.WriteString(", ")
 		appendPeriodAggregateExpr(&query, "output_tokens", conditional)
+		query.WriteString(", ")
+		appendPeriodAggregateExpr(&query, "timed_output_tokens", conditional)
+		query.WriteString(", ")
+		appendPeriodAggregateExpr(&query, "duration_ms", conditional)
+		query.WriteString(", ")
+		appendPeriodTimedEventExpr(&query, conditional)
 		if conditional {
 			since := formatLogTimestamp(window.Since)
-			args = append(args, since, since, since, since, since)
+			args = append(args, since, since, since, since, since, since, since, since)
 		}
 	}
 	query.WriteString(" FROM usage_records WHERE ")
@@ -80,10 +86,13 @@ func (d *DB) QueryPeriodStatsBuckets(windows []PeriodStatsWindow, deviceID strin
 		cached        sql.NullInt64
 		cacheCreation sql.NullInt64
 		output        sql.NullInt64
+		timedOutput   sql.NullInt64
+		duration      sql.NullInt64
+		timedEvents   sql.NullInt64
 	}, len(windows))
-	scanArgs := make([]interface{}, 0, len(windows)*5)
+	scanArgs := make([]interface{}, 0, len(windows)*8)
 	for i := range values {
-		scanArgs = append(scanArgs, &values[i].cost, &values[i].input, &values[i].cached, &values[i].cacheCreation, &values[i].output)
+		scanArgs = append(scanArgs, &values[i].cost, &values[i].input, &values[i].cached, &values[i].cacheCreation, &values[i].output, &values[i].timedOutput, &values[i].duration, &values[i].timedEvents)
 	}
 
 	if err := d.conn.QueryRow(query.String(), args...).Scan(scanArgs...); err != nil {
@@ -99,6 +108,9 @@ func (d *DB) QueryPeriodStatsBuckets(windows []PeriodStatsWindow, deviceID strin
 			CachedTokens:        int(values[i].cached.Int64),
 			CacheCreationTokens: int(values[i].cacheCreation.Int64),
 			OutputTokens:        int(values[i].output.Int64),
+			TimedOutputTokens:   int(values[i].timedOutput.Int64),
+			DurationMS:          values[i].duration.Int64,
+			TimedEvents:         int(values[i].timedEvents.Int64),
 		})
 	}
 	return buckets, nil
@@ -113,6 +125,14 @@ func appendPeriodAggregateExpr(query *strings.Builder, column string, conditiona
 	query.WriteString("COALESCE(SUM(")
 	query.WriteString(column)
 	query.WriteString("), 0)")
+}
+
+func appendPeriodTimedEventExpr(query *strings.Builder, conditional bool) {
+	query.WriteString("COALESCE(SUM(CASE WHEN duration_ms > 0")
+	if conditional {
+		query.WriteString(" AND julianday(log_timestamp) >= julianday(?)")
+	}
+	query.WriteString(" THEN 1 ELSE 0 END), 0)")
 }
 
 // QueryPeriodStatsAll returns total cumulative cost and token breakdown.
@@ -330,6 +350,8 @@ func (d *DB) QueryStatsSince(since time.Time, deviceID string, source string) ([
 	query := `
 		SELECT source, model, COUNT(*) as events,
 			SUM(input_tokens), SUM(cached_tokens), SUM(cache_creation_tokens), SUM(output_tokens),
+			SUM(timed_output_tokens), SUM(duration_ms),
+			SUM(CASE WHEN duration_ms > 0 THEN 1 ELSE 0 END),
 			SUM(cost_usd)
 		FROM usage_records
 		WHERE COALESCE(superseded, 0) = 0
@@ -365,7 +387,8 @@ func (d *DB) QueryStatsSince(since time.Time, deviceID string, source string) ([
 	for rows.Next() {
 		var s ModelStat
 		if err := rows.Scan(&s.Source, &s.Model, &s.Events,
-			&s.InputTokens, &s.CachedTokens, &s.CacheCreationTokens, &s.OutputTokens, &s.TotalCost); err != nil {
+			&s.InputTokens, &s.CachedTokens, &s.CacheCreationTokens, &s.OutputTokens,
+			&s.TimedOutputTokens, &s.DurationMS, &s.TimedEvents, &s.TotalCost); err != nil {
 			return nil, err
 		}
 		stats = append(stats, s)
@@ -379,6 +402,8 @@ func (d *DB) QueryProjectStatsSince(since time.Time, deviceID string, source str
 	query := `
 		SELECT COALESCE(project, 'Default') as project, COUNT(*) as events,
 			SUM(input_tokens), SUM(cached_tokens), SUM(cache_creation_tokens), SUM(output_tokens),
+			SUM(timed_output_tokens), SUM(duration_ms),
+			SUM(CASE WHEN duration_ms > 0 THEN 1 ELSE 0 END),
 			SUM(cost_usd)
 		FROM usage_records
 		WHERE COALESCE(superseded, 0) = 0
@@ -414,7 +439,8 @@ func (d *DB) QueryProjectStatsSince(since time.Time, deviceID string, source str
 	for rows.Next() {
 		var s model.ProjectStat
 		if err := rows.Scan(&s.Project, &s.Events,
-			&s.InputTokens, &s.CachedTokens, &s.CacheCreationTokens, &s.OutputTokens, &s.TotalCost); err != nil {
+			&s.InputTokens, &s.CachedTokens, &s.CacheCreationTokens, &s.OutputTokens,
+			&s.TimedOutputTokens, &s.DurationMS, &s.TimedEvents, &s.TotalCost); err != nil {
 			return nil, err
 		}
 		s.CacheHitRate = model.CacheHitRatePercent(s.InputTokens, s.CachedTokens)

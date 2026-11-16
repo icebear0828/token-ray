@@ -72,7 +72,7 @@ func (d *DB) QuerySyncRecordsPageForDevice(since time.Time, afterID int64, limit
 	return d.querySyncRecordsPage(since, afterID, limit, deviceID)
 }
 func (d *DB) querySyncRecordsPage(since time.Time, afterID int64, limit int, deviceID string) (model.SyncPullResponse, error) {
-	query := `SELECT uuid, log_timestamp, source, model, project, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, cost_usd, file_path, device_id, COALESCE(superseded, 0), COALESCE(updated_at, timestamp, log_timestamp), id
+	query := `SELECT uuid, log_timestamp, source, model, project, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, duration_ms, timed_output_tokens, cost_usd, file_path, device_id, COALESCE(superseded, 0), COALESCE(updated_at, timestamp, log_timestamp), id
 		FROM usage_records WHERE `
 	args := []interface{}{formatLogTimestamp(since)}
 	if afterID > 0 {
@@ -110,7 +110,7 @@ func (d *DB) querySyncRecordsPage(since time.Time, afterID int64, limit int, dev
 		var uuidStr sql.NullString
 		var superseded int
 
-		if err := rows.Scan(&uuidStr, &logTsStr, &r.Source, &r.Model, &r.Project, &r.InputTokens, &r.CachedTokens, &r.CacheCreationTokens, &r.OutputTokens, &r.CostUSD, &r.FilePath, &r.DeviceID, &superseded, &updatedAtStr, &rowID); err != nil {
+		if err := rows.Scan(&uuidStr, &logTsStr, &r.Source, &r.Model, &r.Project, &r.InputTokens, &r.CachedTokens, &r.CacheCreationTokens, &r.OutputTokens, &r.DurationMS, &r.TimedOutputTokens, &r.CostUSD, &r.FilePath, &r.DeviceID, &superseded, &updatedAtStr, &rowID); err != nil {
 			return model.SyncPullResponse{}, err
 		}
 		if limit > 0 && len(records) >= limit {
