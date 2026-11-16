@@ -144,6 +144,46 @@ test('dashboard shows cost intelligence charts', async ({ page }) => {
   await expect(page.getByText('65.6%')).toBeVisible();
 });
 
+test('trend chart provides sliding indicator and smooth interactive feedback', async ({ page }) => {
+  await page.route('**/api/stats?*', async (route) => {
+    await fulfillJSON(route, {
+      ...emptyStatsPayload,
+      charts: {
+        daily_costs: [
+          { date: '2026-11-01', cost: 1.25, tokens: 1000 },
+          { date: '2026-11-02', cost: 3.5, tokens: 2500 },
+          { date: '2026-11-03', cost: 0.75, tokens: 800 },
+        ],
+        granularity: 'daily',
+        calendar_heatmap: [],
+        tool_share: [],
+      },
+    });
+  });
+  await page.route('**/api/lan/scan', fulfillEmptyLANScan);
+  await page.route('**/api/lan/status', fulfillLANStatus);
+
+  await page.goto('/');
+
+  const slider = page.getByTestId('trend-metric-slider');
+  await expect(slider).toBeVisible();
+  await expect(slider).toHaveClass(/translate-x-0/);
+
+  // Switch to TOKEN
+  await page.getByRole('button', { name: 'TOKEN', exact: true }).click();
+  await expect(slider).toHaveClass(/translate-x-full/);
+  await expect(page.getByTestId('daily-cost-bar')).toHaveCount(3);
+
+  // Switch back to 成本 ($)
+  await page.getByRole('button', { name: '成本 ($)', exact: true }).click();
+  await expect(slider).toHaveClass(/translate-x-0/);
+
+  // Hover feedback on bar
+  const secondBar = page.getByTestId('daily-cost-bar').nth(1);
+  await secondBar.hover();
+  await expect(page.getByText('2026-11-02')).toBeVisible();
+});
+
 test('dashboard shows raw total input tokens alongside cache reads', async ({ page }) => {
   await page.route('**/api/stats?*', async (route) => {
     await fulfillJSON(route, {
