@@ -67,14 +67,21 @@ export const DailyCostChart = React.memo(function DailyCostChart({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Metric Toggle */}
-          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-medium">
+          {/* Metric Toggle Segmented Slider */}
+          <div className="relative inline-flex items-center rounded-lg border border-slate-200 bg-slate-100/90 p-0.5 text-[11px] font-medium select-none">
+            <span
+              data-testid="trend-metric-slider"
+              aria-hidden="true"
+              className={`absolute top-0.5 bottom-0.5 left-0.5 w-[calc(50%-2px)] rounded-md bg-white shadow-xs transition-transform duration-200 ease-out ${
+                metric === "cost" ? "translate-x-0" : "translate-x-full"
+              }`}
+            />
             <button
               type="button"
               onClick={() => setMetric("cost")}
-              className={`rounded-md px-2.5 py-1 transition-all ${
+              className={`relative z-10 w-20 py-1 text-center transition-colors duration-200 ${
                 metric === "cost"
-                  ? "bg-white font-semibold text-slate-900 shadow-xs"
+                  ? "font-semibold text-slate-900"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -83,9 +90,9 @@ export const DailyCostChart = React.memo(function DailyCostChart({
             <button
               type="button"
               onClick={() => setMetric("tokens")}
-              className={`rounded-md px-2.5 py-1 transition-all ${
+              className={`relative z-10 w-20 py-1 text-center transition-colors duration-200 ${
                 metric === "tokens"
-                  ? "bg-white font-semibold text-slate-900 shadow-xs"
+                  ? "font-semibold text-slate-900"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -95,7 +102,7 @@ export const DailyCostChart = React.memo(function DailyCostChart({
 
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1 text-right">
             <div className="text-[10px] font-medium text-slate-400">{t("charts.trend_avg")}</div>
-            <div className="font-mono-num text-xs font-semibold text-slate-700">
+            <div className="font-mono-num text-xs font-semibold text-slate-700 transition-all duration-200">
               {loading ? (
                 <span className="inline-block h-3 w-10 animate-pulse rounded bg-slate-200/80 align-middle" />
               ) : (
@@ -105,7 +112,7 @@ export const DailyCostChart = React.memo(function DailyCostChart({
           </div>
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1 text-right">
             <div className="text-[10px] font-medium text-slate-400">{t("charts.trend_peak")}</div>
-            <div className="font-mono-num text-xs font-semibold text-slate-900">
+            <div className="font-mono-num text-xs font-semibold text-slate-900 transition-all duration-200">
               {loading ? (
                 <span className="inline-block h-3 w-10 animate-pulse rounded bg-slate-200/80 align-middle" />
               ) : (
@@ -207,7 +214,7 @@ export const DailyCostChart = React.memo(function DailyCostChart({
                 >
                   {/* Hover column highlight */}
                   {isHovered && (
-                    <div className="pointer-events-none absolute inset-y-0 -inset-x-[1px] rounded bg-slate-100/80" />
+                    <div className="pointer-events-none absolute inset-y-0 -inset-x-[1px] rounded bg-slate-100/80 transition-opacity duration-150" />
                   )}
 
                   {/* Actual bucket bar (Playwright selector preserved) */}
@@ -217,9 +224,9 @@ export const DailyCostChart = React.memo(function DailyCostChart({
                     data-cost={point.cost}
                     data-tokens={point.tokens}
                     style={{ height: `${heightPct}%` }}
-                    className={`relative w-full rounded-t-[3px] transition-all duration-150 ${
+                    className={`relative w-full rounded-t-[3px] transition-[height,background-color,transform] duration-300 ease-out ${
                       isHovered
-                        ? "bg-slate-900"
+                        ? "bg-slate-900 -translate-y-0.5 shadow-xs"
                         : isCurrent
                           ? "bg-blue-600"
                           : value === 0
