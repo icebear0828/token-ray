@@ -3455,6 +3455,12 @@
       "cached_price_per_m": 0.25,
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 6
+    },
+    "qwen4-max": {
+      "input_price_per_m": 1.5,
+      "cached_price_per_m": 0.15,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 4.5
     }
   }
 }
