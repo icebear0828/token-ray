@@ -918,6 +918,12 @@
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 1.2
     },
+    "deepseek-v4p1-flash-1017-flex": {
+      "input_price_per_m": 0.15,
+      "cached_price_per_m": 0.003,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 0.6
+    },
     "deepseek-v4p1-flash-1017-spot": {
       "input_price_per_m": 0.21,
       "cached_price_per_m": 0.0042,
@@ -977,6 +983,18 @@
       "cached_price_per_m": 0.089,
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 0.89
+    },
+    "deepseekv4.1-flash-1017": {
+      "input_price_per_m": 0.1489,
+      "cached_price_per_m": 0.0027,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 0.5851
+    },
+    "deepseekv4.1-flash-1017-interactive": {
+      "input_price_per_m": 0.266,
+      "cached_price_per_m": 0.0053,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 1.117
     },
     "gemini-2.0-flash": {
       "input_price_per_m": 0.15,
@@ -1253,6 +1271,12 @@
       "cached_price_per_m": 0.075,
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 7.5
+    },
+    "gemini-4-neon": {
+      "input_price_per_m": 3,
+      "cached_price_per_m": 0.15,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 15
     },
     "gemini-decision-1": {
       "input_price_per_m": 0.1,
@@ -2033,6 +2057,24 @@
       "cached_price_per_m": 0.05,
       "cache_creation_price_per_m": 1.25,
       "output_price_per_m": 5
+    },
+    "gpt-6.2-astra": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.4,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
+    },
+    "gpt-6.2-astra-law": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.4,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
+    },
+    "gpt-6.2-sol": {
+      "input_price_per_m": 2,
+      "cached_price_per_m": 0.1,
+      "cache_creation_price_per_m": 2.5,
+      "output_price_per_m": 10
     },
     "gpt-audio": {
       "input_price_per_m": 2.5,
@@ -3455,6 +3497,12 @@
       "cached_price_per_m": 0.25,
       "cache_creation_price_per_m": 0,
       "output_price_per_m": 6
+    },
+    "qwen4-max": {
+      "input_price_per_m": 1.5,
+      "cached_price_per_m": 0.075,
+      "cache_creation_price_per_m": 1.875,
+      "output_price_per_m": 4.5
     }
   }
 }
