@@ -5,12 +5,13 @@ import (
 	"net/http"
 
 	"ai-flight-dashboard/internal/calculator"
+	"ai-flight-dashboard/internal/dashboard"
 	"ai-flight-dashboard/internal/db"
 	"ai-flight-dashboard/internal/model"
 	"ai-flight-dashboard/internal/watcher"
 )
 
-func handleTrack(w http.ResponseWriter, r *http.Request, database *db.DB, calc *calculator.Calculator, wInst *watcher.Watcher) {
+func handleTrack(w http.ResponseWriter, r *http.Request, database *db.DB, calc *calculator.Calculator, wInst *watcher.Watcher, statsCache *dashboard.StatsCache) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -34,6 +35,7 @@ func handleTrack(w http.ResponseWriter, r *http.Request, database *db.DB, calc *
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	statsCache.Clear()
 	w.WriteHeader(http.StatusCreated)
 }
 

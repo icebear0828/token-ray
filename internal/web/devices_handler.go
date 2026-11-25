@@ -1,6 +1,7 @@
 package web
 
 import (
+	"ai-flight-dashboard/internal/dashboard"
 	"ai-flight-dashboard/internal/db"
 	"ai-flight-dashboard/internal/model"
 	"encoding/json"
@@ -8,7 +9,7 @@ import (
 	"strings"
 )
 
-func handleDevices(w http.ResponseWriter, r *http.Request, database *db.DB, token string) {
+func handleDevices(w http.ResponseWriter, r *http.Request, database *db.DB, token string, statsCache *dashboard.StatsCache) {
 	if r.Method == http.MethodGet {
 		devices, err := database.QueryDeviceSummaries()
 		if err != nil {
@@ -32,6 +33,7 @@ func handleDevices(w http.ResponseWriter, r *http.Request, database *db.DB, toke
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
+			statsCache.Clear()
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(model.DeviceSupersedeResponse{
 				DeviceID:        deviceID,
@@ -44,7 +46,7 @@ func handleDevices(w http.ResponseWriter, r *http.Request, database *db.DB, toke
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
-func handleDeviceAlias(w http.ResponseWriter, r *http.Request, database *db.DB) {
+func handleDeviceAlias(w http.ResponseWriter, r *http.Request, database *db.DB, statsCache *dashboard.StatsCache) {
 	if r.Method == http.MethodPost {
 		var req struct {
 			DeviceID    string `json:"device_id"`
@@ -58,6 +60,7 @@ func handleDeviceAlias(w http.ResponseWriter, r *http.Request, database *db.DB) 
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+		statsCache.Clear()
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -72,6 +75,7 @@ func handleDeviceAlias(w http.ResponseWriter, r *http.Request, database *db.DB) 
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+		statsCache.Clear()
 		w.WriteHeader(http.StatusOK)
 		return
 	}

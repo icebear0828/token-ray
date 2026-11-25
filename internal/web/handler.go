@@ -90,15 +90,15 @@ func NewHandlerWithDeps(database *db.DB, calc *calculator.Calculator, wInst *wat
 	})
 
 	mux.HandleFunc("/api/track", authMiddleware(token, func(w http.ResponseWriter, r *http.Request) {
-		handleTrack(w, r, database, calc, wInst)
+		handleTrack(w, r, database, calc, wInst, statsCache)
 	}))
 
 	mux.HandleFunc("/api/devices", func(w http.ResponseWriter, r *http.Request) {
-		handleDevices(w, r, database, token)
+		handleDevices(w, r, database, token, statsCache)
 	})
 
 	mux.HandleFunc("/api/device-alias", authMiddleware(token, func(w http.ResponseWriter, r *http.Request) {
-		handleDeviceAlias(w, r, database)
+		handleDeviceAlias(w, r, database, statsCache)
 	}))
 
 	mux.HandleFunc("/api/lan/self", func(w http.ResponseWriter, r *http.Request) {

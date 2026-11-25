@@ -599,3 +599,133 @@ func TestHTTPGzipMiddleware(t *testing.T) {
 		t.Fatalf("empty 201 response must not be gzipped: len=%d encoding=%q", len(trackBody), trackResp.Header.Get("Content-Encoding"))
 	}
 }
+
+func TestAPIStatsCacheInvalidatedByMutations(t *testing.T) {
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+
+	now := time.Now().UTC()
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{Source: "Claude Code", Model: "claude-opus-4-7", OutputTokens: 1000, UUID: "seed-1"},
+		1.00, now.Add(-5*time.Minute), "/a.jsonl", "dev-a",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := web.NewHandler(database, calc, nil, nil, "", emptyFS)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+
+	fetchSummary := func(ifNoneMatch string) (int, string, model.StatsResponse) {
+		req, err := http.NewRequest(http.MethodGet, srv.URL+"/api/stats?detail=summary&period=30d", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ifNoneMatch != "" {
+			req.Header.Set("If-None-Match", ifNoneMatch)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed model.StatsResponse
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &parsed); err != nil {
+				t.Fatalf("unmarshal stats: %v", err)
+			}
+		}
+		return resp.StatusCode, resp.Header.Get("ETag"), parsed
+	}
+
+	// Warm StatsCache.
+	status, etag1, s1 := fetchSummary("")
+	if status != http.StatusOK || etag1 == "" || len(s1.Devices) != 1 {
+		t.Fatalf("unexpected initial response: status=%d etag=%q devices=%+v", status, etag1, s1.Devices)
+	}
+
+	// 1. POST /api/track invalidates StatsCache immediately.
+	trackResp, err := client.Post(srv.URL+"/api/track", "application/json", strings.NewReader(`{
+		"device_id": "dev-b",
+		"usage": {"source": "Codex", "model": "gpt-5.5", "input_tokens": 1000, "output_tokens": 500, "uuid": "track-2"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trackResp.Body.Close()
+	if trackResp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 from /api/track, got %d", trackResp.StatusCode)
+	}
+
+	status, etag2, s2 := fetchSummary(etag1)
+	if status != http.StatusOK || etag2 == etag1 || len(s2.Devices) != 2 {
+		t.Fatalf("expected immediate cache invalidation after /api/track: status=%d etag1=%q etag2=%q devices=%+v", status, etag1, etag2, s2.Devices)
+	}
+
+	// 2. POST /api/device-alias invalidates StatsCache immediately.
+	aliasResp, err := client.Post(srv.URL+"/api/device-alias", "application/json", strings.NewReader(`{"device_id":"dev-b","display_name":"Studio Mac"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasResp.Body.Close()
+	if aliasResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from POST /api/device-alias, got %d", aliasResp.StatusCode)
+	}
+
+	status, etag3, s3 := fetchSummary(etag2)
+	if status != http.StatusOK || etag3 == etag2 {
+		t.Fatalf("expected immediate cache invalidation after POST /api/device-alias: status=%d etag2=%q etag3=%q", status, etag2, etag3)
+	}
+	foundAlias := false
+	for _, dev := range s3.Devices {
+		if dev.ID == "dev-b" && dev.DisplayName == "Studio Mac" {
+			foundAlias = true
+		}
+	}
+	if !foundAlias {
+		t.Fatalf("expected Studio Mac alias in stats, got %+v", s3.Devices)
+	}
+
+	// 3. DELETE /api/device-alias invalidates StatsCache immediately.
+	delAliasReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/device-alias?device_id=dev-b", nil)
+	delAliasResp, err := client.Do(delAliasReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delAliasResp.Body.Close()
+	if delAliasResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from DELETE /api/device-alias, got %d", delAliasResp.StatusCode)
+	}
+
+	status, etag4, s4 := fetchSummary(etag3)
+	if status != http.StatusOK || etag4 == etag3 {
+		t.Fatalf("expected immediate cache invalidation after DELETE /api/device-alias: status=%d etag3=%q etag4=%q", status, etag3, etag4)
+	}
+	for _, dev := range s4.Devices {
+		if dev.ID == "dev-b" && dev.DisplayName != "dev-b" {
+			t.Fatalf("expected alias cleared in stats, got %+v", dev)
+		}
+	}
+
+	// 4. DELETE /api/devices invalidates StatsCache immediately.
+	delDevReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/devices?device_id=dev-b", nil)
+	delDevResp, err := client.Do(delDevReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delDevResp.Body.Close()
+	if delDevResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from DELETE /api/devices, got %d", delDevResp.StatusCode)
+	}
+
+	status, etag5, s5 := fetchSummary(etag4)
+	if status != http.StatusOK || etag5 == etag4 || len(s5.Devices) != 1 {
+		t.Fatalf("expected immediate cache invalidation after DELETE /api/devices: status=%d etag4=%q etag5=%q devices=%+v", status, etag4, etag5, s5.Devices)
+	}
+}
