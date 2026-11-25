@@ -18,7 +18,9 @@
     /* Path mapping */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "react-i18next": ["src/i18n.ts"],
+      "i18next": ["src/i18n.ts"]
     },
 
     /* Linting */

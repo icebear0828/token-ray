@@ -17,6 +17,12 @@
     "refresh_error": "Refresh failed",
     "retry": "Retry"
   },
+  "theme": {
+    "switch_to_dark": "Switch to dark theme",
+    "switch_to_light": "Switch to light theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
   "filters": {
     "all_devices": "All Devices",
     "all_sources": "All Sources",
@@ -25,6 +31,13 @@
     "window_label": "TIME WINDOW"
   },
   "kpi": {
+    "eyebrow_cost": "ESTIMATED COST · {{period}}",
+    "eyebrow_tokens": "TOTAL TOKENS · {{period}}",
+    "eyebrow_cache": "CACHE HIT RATE",
+    "eyebrow_base_input": "BASE INPUT",
+    "badge_in_out": "IN + OUT",
+    "badge_billable": "BILLABLE NEW",
+    "of_input": "{{pct}}% of IN",
     "total_cost": "ESTIMATED COST",
     "total_cost_sub": "Calculated per 1M token model pricing",
     "total_tokens": "TOTAL TOKEN VOLUME",
@@ -64,6 +77,7 @@
     "hover_hint": "Hover any cell to inspect daily token volume, cost & session events",
     "source_share_title": "CLI SOURCE DISTRIBUTION",
     "source_share_sub": "TOOL SHARE & EFFICIENCY",
+    "source_share_empty": "No source telemetry recorded in this window",
     "metric_cost": "By Cost",
     "metric_tokens": "By Tokens",
     "heatmap_title": "DAILY ACTIVITY MATRIX",
@@ -71,14 +85,35 @@
     "active_days": "Active Days",
     "peak_tokens": "Peak Day Tokens",
     "total_events": "Total Events",
+    "days_unit": "{{count}}d",
+    "unit_tokens": "tokens",
+    "unit_events": "{{count}} events",
+    "weekday_mon": "Mon",
+    "weekday_wed": "Wed",
+    "weekday_fri": "Fri",
+    "month_0": "Jan",
+    "month_1": "Feb",
+    "month_2": "Mar",
+    "month_3": "Apr",
+    "month_4": "May",
+    "month_5": "Jun",
+    "month_6": "Jul",
+    "month_7": "Aug",
+    "month_8": "Sep",
+    "month_9": "Oct",
+    "month_10": "Nov",
+    "month_11": "Dec",
     "less": "Less",
     "more": "More"
   },
   "tables": {
     "models_title": "MODEL ATTRIBUTION & PRICING",
     "models_sub": "PER-MODEL TOKEN & CACHE BREAKDOWN",
+    "models_count": "{{period}} · {{count}} MODELS",
     "projects_title": "PROJECT WORKSPACE ATTRIBUTION",
     "projects_sub": "SESSION WORKING DIRECTORY ROLLUP",
+    "projects_count": "{{period}} · {{count}} WORKSPACES",
+    "sort_label": "SORT:",
     "col_model": "MODEL / SOURCE",
     "col_events": "EVENTS",
     "col_base_input": "BASE INPUT",
@@ -95,7 +130,10 @@
     "col_share": "COST SHARE",
     "empty_models": "No model telemetry recorded for this filter scope",
     "empty_projects": "No project directories found in session logs",
-    "search_placeholder": "Filter models or projects..."
+    "search_placeholder": "Filter models or projects...",
+    "show_all": "Show all ({{count}})",
+    "show_less": "Show top {{count}}",
+    "showing_cap": "Showing top {{shown}} of {{total}}"
   },
   "drawers": {
     "lan_btn": "LAN RADAR",

@@ -8,9 +8,10 @@ interface ActivityHeatmapProps {
   currency: CurrencyCode;
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency }) => {
+export const ActivityHeatmap = React.memo(function ActivityHeatmap({
+  data,
+  currency,
+}: ActivityHeatmapProps) {
   const { t } = useTranslation();
   const [hoveredCell, setHoveredCell] = useState<HeatmapPoint | null>(null);
 
@@ -49,7 +50,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency
     }
 
     // Extract month markers per week column
-    const labels: { colIdx: number; label: string }[] = [];
+    const labels: { colIdx: number; monthIndex: number }[] = [];
     let lastMonth = -1;
     cols.forEach((week, colIdx) => {
       const firstValid = week.find((c) => c !== null);
@@ -58,7 +59,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency
         if (!Number.isNaN(dt.getTime())) {
           const m = dt.getUTCMonth();
           if (m !== lastMonth) {
-            labels.push({ colIdx, label: MONTHS[m] });
+            labels.push({ colIdx, monthIndex: m });
             lastMonth = m;
           }
         }
@@ -76,44 +77,52 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency
 
   const getCellLevelClass = (tokens: number): string => {
     if (!tokens || tokens <= 0 || maxTokens <= 0) {
-      return "bg-slate-100 hover:ring-1 hover:ring-slate-400";
+      return "bg-slate-100 hover:ring-1 hover:ring-slate-400 dark:bg-slate-800/80 dark:hover:ring-slate-500";
     }
     const ratio = tokens / maxTokens;
-    if (ratio < 0.22) return "bg-emerald-200 hover:ring-1 hover:ring-emerald-600";
-    if (ratio < 0.48) return "bg-emerald-300 hover:ring-1 hover:ring-emerald-700";
-    if (ratio < 0.75) return "bg-emerald-500 hover:ring-1 hover:ring-emerald-800";
-    return "bg-emerald-700 hover:ring-1 hover:ring-slate-900";
+    if (ratio < 0.22) {
+      return "bg-emerald-200 hover:ring-1 hover:ring-emerald-600 dark:bg-emerald-950 dark:ring-1 dark:ring-inset dark:ring-emerald-800/70 dark:hover:ring-emerald-500";
+    }
+    if (ratio < 0.48) {
+      return "bg-emerald-300 hover:ring-1 hover:ring-emerald-700 dark:bg-emerald-800 dark:hover:ring-emerald-400";
+    }
+    if (ratio < 0.75) {
+      return "bg-emerald-500 hover:ring-1 hover:ring-emerald-800 dark:bg-emerald-600 dark:hover:ring-emerald-300";
+    }
+    return "bg-emerald-700 hover:ring-1 hover:ring-slate-900 dark:bg-emerald-400 dark:hover:ring-emerald-200";
   };
 
   return (
-    <section className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+    <section className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
       {/* Top Row: Title & Summary Pills */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+          <div className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase dark:text-slate-500">
             {t("charts.heatmap_sub")}
           </div>
-          <h3 className="mt-0.5 text-sm font-semibold text-slate-900">
+          <h3 className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
             {t("charts.heatmap_title")}
           </h3>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 text-xs">
+        <div className="flex flex-wrap items-center gap-3 text-xs sm:gap-4">
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">{t("charts.active_days")}:</span>
-            <span className="font-mono-num font-semibold text-slate-800">{activeDays}d</span>
+            <span className="text-slate-400 dark:text-slate-500">{t("charts.active_days")}:</span>
+            <span className="font-mono-num font-semibold text-slate-800 dark:text-slate-200">
+              {t("charts.days_unit", { count: activeDays })}
+            </span>
           </div>
-          <div className="h-3 w-px bg-slate-200" />
+          <div className="h-3 w-px bg-slate-200 dark:bg-slate-800" />
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">{t("charts.peak_tokens")}:</span>
-            <span className="font-mono-num font-semibold text-slate-800">
+            <span className="text-slate-400 dark:text-slate-500">{t("charts.peak_tokens")}:</span>
+            <span className="font-mono-num font-semibold text-slate-800 dark:text-slate-200">
               {formatCompactNumber(maxTokens)}
             </span>
           </div>
-          <div className="h-3 w-px bg-slate-200" />
+          <div className="h-3 w-px bg-slate-200 dark:bg-slate-800" />
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">{t("charts.total_events")}:</span>
-            <span className="font-mono-num font-semibold text-slate-800">
+            <span className="text-slate-400 dark:text-slate-500">{t("charts.total_events")}:</span>
+            <span className="font-mono-num font-semibold text-slate-800 dark:text-slate-200">
               {formatCompactNumber(totalEvents)}
             </span>
           </div>
@@ -124,12 +133,12 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency
       <div className="overflow-x-auto pb-1">
         <div className="inline-block min-w-full">
           {/* Month Header Row */}
-          <div className="mb-1.5 flex pl-8 text-[10px] font-medium text-slate-400">
+          <div className="mb-1.5 flex pl-9 text-[10px] font-medium text-slate-400 dark:text-slate-500">
             {weeks.map((_, colIdx) => {
               const found = monthLabels.find((m) => m.colIdx === colIdx);
               return (
-                <div key={colIdx} className="w-[15px] shrink-0">
-                  {found ? found.label : ""}
+                <div key={colIdx} className="w-[15px] shrink-0 whitespace-nowrap">
+                  {found ? t(`charts.month_${found.monthIndex}`) : ""}
                 </div>
               );
             })}
@@ -138,18 +147,21 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency
           {/* Grid Body: Weekday labels + Week columns */}
           <div className="flex items-start gap-2">
             {/* Weekday Anchors */}
-            <div className="flex w-6 shrink-0 flex-col gap-[3px] pt-[1px] text-[10px] leading-[12px] text-slate-400">
+            <div className="flex w-7 shrink-0 flex-col gap-[3px] pt-[1px] text-[10px] leading-[12px] text-slate-400 dark:text-slate-500">
               <span className="h-[12px]" />
-              <span className="h-[12px]">Mon</span>
+              <span className="h-[12px]">{t("charts.weekday_mon")}</span>
               <span className="h-[12px]" />
-              <span className="h-[12px]">Wed</span>
+              <span className="h-[12px]">{t("charts.weekday_wed")}</span>
               <span className="h-[12px]" />
-              <span className="h-[12px]">Fri</span>
+              <span className="h-[12px]">{t("charts.weekday_fri")}</span>
               <span className="h-[12px]" />
             </div>
 
             {/* Week Columns */}
-            <div className="flex gap-[3px]">
+            <div
+              className="flex gap-[3px]"
+              onMouseLeave={() => setHoveredCell(null)}
+            >
               {weeks.map((week, colIdx) => (
                 <div key={colIdx} className="flex flex-col gap-[3px]">
                   {week.map((cell, rowIdx) => {
@@ -184,47 +196,49 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data, currency
       </div>
 
       {/* Bottom Readout & Legend Bar */}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-xs">
-        <div className="flex min-h-[20px] items-center gap-3">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-xs dark:border-slate-800">
+        <div className="flex min-h-[20px] flex-wrap items-center gap-2.5">
           {hoveredCell ? (
             <>
-              <span className="font-mono-num font-semibold text-slate-800">
+              <span className="font-mono-num font-semibold text-slate-800 dark:text-slate-100">
                 {hoveredCell.date}
               </span>
-              <span className="text-slate-300">·</span>
-              <span className="font-mono-num text-slate-600">
-                <strong className="text-slate-900">
+              <span className="text-slate-300 dark:text-slate-700">·</span>
+              <span className="font-mono-num text-slate-600 dark:text-slate-400">
+                <strong className="text-slate-900 dark:text-slate-100">
                   {formatCompactNumber(hoveredCell.tokens)}
                 </strong>{" "}
-                tokens
+                {t("charts.unit_tokens")}
               </span>
-              <span className="text-slate-300">·</span>
-              <span className="font-mono-num text-slate-600">
-                <strong className="text-slate-900">
+              <span className="text-slate-300 dark:text-slate-700">·</span>
+              <span className="font-mono-num text-slate-600 dark:text-slate-400">
+                <strong className="text-slate-900 dark:text-slate-100">
                   {formatCost(hoveredCell.cost, currency)}
                 </strong>
               </span>
-              <span className="text-slate-300">·</span>
-              <span className="font-mono-num text-slate-500">{hoveredCell.events} events</span>
+              <span className="text-slate-300 dark:text-slate-700">·</span>
+              <span className="font-mono-num text-slate-500 dark:text-slate-400">
+                {t("charts.unit_events", { count: hoveredCell.events })}
+              </span>
             </>
           ) : (
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">
               {t("charts.hover_hint")}
             </span>
           )}
         </div>
 
         {/* Intensity Scale Legend */}
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
           <span>{t("charts.less")}</span>
-          <span className="h-2.5 w-2.5 rounded-[2px] bg-slate-100" />
-          <span className="h-2.5 w-2.5 rounded-[2px] bg-emerald-200" />
-          <span className="h-2.5 w-2.5 rounded-[2px] bg-emerald-300" />
-          <span className="h-2.5 w-2.5 rounded-[2px] bg-emerald-500" />
-          <span className="h-2.5 w-2.5 rounded-[2px] bg-emerald-700" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-slate-100 dark:bg-slate-800/80" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-emerald-200 dark:bg-emerald-950 dark:ring-1 dark:ring-inset dark:ring-emerald-800/70" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-emerald-300 dark:bg-emerald-800" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-emerald-500 dark:bg-emerald-600" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-emerald-700 dark:bg-emerald-400" />
           <span>{t("charts.more")}</span>
         </div>
       </div>
     </section>
   );
-};
+});
