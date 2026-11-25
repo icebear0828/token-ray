@@ -24,8 +24,9 @@ func NewHandlerWithLANController(database *db.DB, calc *calculator.Calculator, w
 // HandlerDeps carries optional runtime services such as the source registry
 // and plugin manager. Existing callers can use the shorter constructors.
 type HandlerDeps struct {
-	Sources SourceProvider
-	Plugins PluginController
+	Sources    SourceProvider
+	Plugins    PluginController
+	StatsCache *dashboard.StatsCache
 }
 
 const maxPluginUpload = 12 << 20
@@ -34,7 +35,10 @@ func NewHandlerWithDeps(database *db.DB, calc *calculator.Calculator, wInst *wat
 	mux := http.NewServeMux()
 	// The dashboard polls every 5s; a TTL shorter than that misses on every
 	// poll. 10s keeps results warm across polls while staying near-real-time.
-	statsCache := dashboard.NewStatsCache(10 * time.Second)
+	statsCache := deps.StatsCache
+	if statsCache == nil {
+		statsCache = dashboard.NewStatsCache(10 * time.Second)
+	}
 
 	mux.HandleFunc("/api/sources", func(w http.ResponseWriter, r *http.Request) {
 		handleSources(w, r, deps.Sources)
@@ -137,5 +141,5 @@ func NewHandlerWithDeps(database *db.DB, calc *calculator.Calculator, wInst *wat
 	}
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
-	return mux
+	return gzipMiddleware(mux)
 }

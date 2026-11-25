@@ -3,6 +3,7 @@ package calculator_test
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"ai-flight-dashboard/internal/calculator"
@@ -232,4 +233,86 @@ func TestCalculateCostFallbackNormalization(t *testing.T) {
 			t.Errorf("unknown model cost = %f, want 0", cost)
 		}
 	})
+}
+
+func TestCalculatorReplaceBasePricingAndConcurrentRace(t *testing.T) {
+	baseJSON := []byte(`{
+		"models": {
+			"claude-opus-4-7": {"input_price_per_m": 5, "cached_price_per_m": 0.5, "cache_creation_price_per_m": 6.25, "output_price_per_m": 25},
+			"gpt-5.5": {"input_price_per_m": 5, "cached_price_per_m": 0.5, "cache_creation_price_per_m": 0, "output_price_per_m": 30}
+		}
+	}`)
+	calc, err := calculator.NewFromBytes(baseJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Custom price override must survive ReplaceBasePricing.
+	customPath := filepath.Join(t.TempDir(), "custom_pricing.json")
+	if err := os.WriteFile(customPath, []byte(`{
+		"claude-opus-4-7": {"input_price_per_m": 99, "cached_price_per_m": 9, "cache_creation_price_per_m": 100, "output_price_per_m": 199}
+	}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := calc.LoadCustomPrices(customPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Replacing with identical base pricing reports changed=false.
+	changed, err := calc.ReplaceBasePricing(baseJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("expected changed=false when base pricing matches")
+	}
+
+	// Replacing with updated base pricing reports changed=true and preserves custom overrides.
+	updatedBaseJSON := []byte(`{
+		"models": {
+			"claude-opus-4-7": {"input_price_per_m": 1, "cached_price_per_m": 0.1, "cache_creation_price_per_m": 1, "output_price_per_m": 2},
+			"gpt-5.5": {"input_price_per_m": 6, "cached_price_per_m": 0.6, "cache_creation_price_per_m": 0, "output_price_per_m": 36},
+			"new-model": {"input_price_per_m": 2, "cached_price_per_m": 0.2, "cache_creation_price_per_m": 0, "output_price_per_m": 8}
+		}
+	}`)
+	changed, err = calc.ReplaceBasePricing(updatedBaseJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true when base pricing changes")
+	}
+
+	customPrice, ok := calc.GetModelPrice("claude-opus-4-7")
+	if !ok || customPrice.InputPricePerM != 99 {
+		t.Fatalf("expected custom override to survive base reload, got ok=%v price=%+v", ok, customPrice)
+	}
+	newPrice, ok := calc.GetModelPrice("new-model")
+	if !ok || newPrice.OutputPricePerM != 8 {
+		t.Fatalf("expected new base model to be present, got ok=%v price=%+v", ok, newPrice)
+	}
+
+	// Concurrent readers and writers must pass cleanly under -race.
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < 100; i++ {
+				_, _ = calc.CalculateCost("gpt-5.5", 1000, 100, 0, 200)
+				_, _ = calc.GetModelPrice("claude-opus-4-7")
+				_, _ = calc.CalculateCostNoCaching("new-model", 1000, 100, 0, 200)
+				_ = calc.ListModels()
+				if id%2 == 0 && i%10 == 0 {
+					if i%20 == 0 {
+						_, _ = calc.ReplaceBasePricing(baseJSON)
+					} else {
+						_, _ = calc.ReplaceBasePricing(updatedBaseJSON)
+					}
+					_ = calc.LoadCustomPrices(customPath)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
 }

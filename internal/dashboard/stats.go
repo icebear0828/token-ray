@@ -1,7 +1,8 @@
 package dashboard
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 	"time"
 
@@ -9,6 +10,19 @@ import (
 	"ai-flight-dashboard/internal/db"
 	"ai-flight-dashboard/internal/model"
 )
+
+var defaultPeriodWindows = []struct {
+	label string
+	dur   time.Duration
+}{
+	{"1h", 1 * time.Hour},
+	{"24h", 24 * time.Hour},
+	{"7d", 7 * 24 * time.Hour},
+	{"30d", 30 * 24 * time.Hour},
+	{"3mo", 90 * 24 * time.Hour},
+	{"6mo", 180 * 24 * time.Hour},
+	{"1y", 365 * 24 * time.Hour},
+}
 
 // periodDurations maps the dashboard time-window labels to their lookback
 // duration. ALL has no lookback and is handled separately.
@@ -140,8 +154,8 @@ func BuildStatsSummary(database *db.DB, _ *calculator.Calculator, deviceID strin
 			CacheHitRate:       model.CacheHitRatePercent(stat.InputTokens, stat.CachedTokens),
 		})
 	}
-	sort.Slice(sources, func(i, j int) bool {
-		return sources[i].Name < sources[j].Name
+	slices.SortFunc(sources, func(a, b model.SourceStats) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 
 	deviceInfos, err := buildDeviceInfos(database)
@@ -189,21 +203,8 @@ func normalizeDeviceID(deviceID string) string {
 }
 
 func buildPeriodCosts(database *db.DB, now time.Time, deviceID string, source string) ([]model.PeriodCost, error) {
-	windows := []struct {
-		label string
-		dur   time.Duration
-	}{
-		{"1h", 1 * time.Hour},
-		{"24h", 24 * time.Hour},
-		{"7d", 7 * 24 * time.Hour},
-		{"30d", 30 * 24 * time.Hour},
-		{"3mo", 90 * 24 * time.Hour},
-		{"6mo", 180 * 24 * time.Hour},
-		{"1y", 365 * 24 * time.Hour},
-	}
-
-	periodWindows := make([]db.PeriodStatsWindow, 0, len(windows)+1)
-	for _, win := range windows {
+	periodWindows := make([]db.PeriodStatsWindow, 0, len(defaultPeriodWindows)+1)
+	for _, win := range defaultPeriodWindows {
 		periodWindows = append(periodWindows, db.PeriodStatsWindow{
 			Label: win.label,
 			Since: now.Add(-win.dur),
@@ -313,11 +314,6 @@ func chartWindow(now time.Time, period string) (granularity string, start time.T
 }
 
 func fillCostBuckets(granularity string, start time.Time, end time.Time, count int, buckets []model.DailyCostBucket) []model.DailyCostBucket {
-	byDate := make(map[string]model.DailyCostBucket, len(buckets))
-	for _, bucket := range buckets {
-		byDate[bucket.Date] = bucket
-	}
-
 	if count == 0 {
 		if len(buckets) == 0 {
 			return []model.DailyCostBucket{}
@@ -328,11 +324,31 @@ func fillCostBuckets(granularity string, start time.Time, end time.Time, count i
 		}
 	}
 
-	filled := make([]model.DailyCostBucket, 0, max(count, 1))
+	capHint := count
+	if capHint <= 0 {
+		if granularity == db.BucketMonthly {
+			capHint = (end.Year()-start.Year())*12 + int(end.Month()-start.Month())
+		}
+		if capHint < len(buckets) {
+			capHint = len(buckets)
+		}
+		if capHint < 1 {
+			capHint = 1
+		}
+	}
+
+	filled := make([]model.DailyCostBucket, 0, capHint)
+	idx := 0
 	for cursor := start; cursor.Before(end); cursor = nextBucketStart(granularity, cursor) {
 		key := formatBucketKey(granularity, cursor)
-		bucket, ok := byDate[key]
-		if !ok {
+		for idx < len(buckets) && buckets[idx].Date < key {
+			idx++
+		}
+		var bucket model.DailyCostBucket
+		if idx < len(buckets) && buckets[idx].Date == key {
+			bucket = buckets[idx]
+			idx++
+		} else {
 			bucket = model.DailyCostBucket{Date: key}
 		}
 		filled = append(filled, bucket)
@@ -403,16 +419,18 @@ func parseBucketStart(granularity string, value string) time.Time {
 }
 
 func fillCalendarHeatmap(start time.Time, days int, buckets []model.CalendarHeatmapBucket) []model.CalendarHeatmapBucket {
-	byDate := make(map[string]model.CalendarHeatmapBucket, len(buckets))
-	for _, bucket := range buckets {
-		byDate[bucket.Date] = bucket
-	}
-
 	filled := make([]model.CalendarHeatmapBucket, 0, days)
+	idx := 0
 	for offset := 0; offset < days; offset++ {
 		date := start.AddDate(0, 0, offset).Format("2006-01-02")
-		bucket, ok := byDate[date]
-		if !ok {
+		for idx < len(buckets) && buckets[idx].Date < date {
+			idx++
+		}
+		var bucket model.CalendarHeatmapBucket
+		if idx < len(buckets) && buckets[idx].Date == date {
+			bucket = buckets[idx]
+			idx++
+		} else {
 			bucket = model.CalendarHeatmapBucket{Date: date}
 		}
 		filled = append(filled, bucket)
@@ -421,13 +439,23 @@ func fillCalendarHeatmap(start time.Time, days int, buckets []model.CalendarHeat
 }
 
 func buildSourcesFromModelStats(stats []db.ModelStat, calc *calculator.Calculator) []model.SourceStats {
-	sourceMap := make(map[string]*model.SourceStats)
+	sources := make([]model.SourceStats, 0, 8)
 	for _, s := range stats {
-		src, ok := sourceMap[s.Source]
-		if !ok {
-			src = &model.SourceStats{Name: s.Source}
-			sourceMap[s.Source] = src
+		idx := -1
+		for i := range sources {
+			if sources[i].Name == s.Source {
+				idx = i
+				break
+			}
 		}
+		if idx < 0 {
+			idx = len(sources)
+			sources = append(sources, model.SourceStats{
+				Name:   s.Source,
+				Models: make([]model.ModelStats, 0, 4),
+			})
+		}
+		src := &sources[idx]
 		price, _ := calc.GetModelPrice(s.Model)
 		src.Models = append(src.Models, model.ModelStats{
 			Model:                  s.Model,
@@ -457,13 +485,11 @@ func buildSourcesFromModelStats(stats []db.ModelStat, calc *calculator.Calculato
 		src.TotalEvents += s.Events
 	}
 
-	sources := make([]model.SourceStats, 0, len(sourceMap))
-	for _, s := range sourceMap {
-		s.CacheHitRate = model.CacheHitRatePercent(s.TotalInput, s.TotalCached)
-		sources = append(sources, *s)
+	for i := range sources {
+		sources[i].CacheHitRate = model.CacheHitRatePercent(sources[i].TotalInput, sources[i].TotalCached)
 	}
-	sort.Slice(sources, func(i, j int) bool {
-		return sources[i].Name < sources[j].Name
+	slices.SortFunc(sources, func(a, b model.SourceStats) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 	return sources
 }

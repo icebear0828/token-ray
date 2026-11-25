@@ -12,6 +12,8 @@ import (
 
 func TestDiscoverGeminiHistoryFilesOnlyReturnsReplayableJSONL(t *testing.T) {
 	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("USERPROFILE", root)
 	geminiDir := filepath.Join(root, ".gemini", "tmp", "wiki", "chats")
 	claudeDir := filepath.Join(root, ".claude", "projects", "-Users-c-token")
 	if err := os.MkdirAll(geminiDir, 0755); err != nil {
@@ -64,6 +66,8 @@ func TestRunRepairHistorySupersedesLocalGeminiLegacyRows(t *testing.T) {
 	calc := testutil.NewTestCalc(t)
 
 	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("USERPROFILE", root)
 	geminiDir := filepath.Join(root, ".gemini", "tmp", "wiki", "chats")
 	if err := os.MkdirAll(geminiDir, 0755); err != nil {
 		t.Fatal(err)

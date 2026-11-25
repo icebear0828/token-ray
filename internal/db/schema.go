@@ -92,10 +92,14 @@ func initSchema(conn *sql.DB) error {
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_device_uuid ON usage_records(device_id, uuid) WHERE uuid IS NOT NULL AND uuid != ''",
 		"CREATE INDEX IF NOT EXISTS idx_usage_active_source_log_ts ON usage_records(source, log_timestamp) WHERE COALESCE(superseded, 0) = 0",
 		"CREATE INDEX IF NOT EXISTS idx_usage_active_device_source_log_ts ON usage_records(device_id, source, log_timestamp) WHERE COALESCE(superseded, 0) = 0",
+		"CREATE INDEX IF NOT EXISTS idx_usage_active_log_jd ON usage_records(julianday(log_timestamp)) WHERE COALESCE(superseded, 0) = 0",
+		"CREATE INDEX IF NOT EXISTS idx_usage_active_device_log_jd ON usage_records(device_id, julianday(log_timestamp)) WHERE COALESCE(superseded, 0) = 0",
 		"CREATE INDEX IF NOT EXISTS idx_usage_active_source_log_jd ON usage_records(source, julianday(log_timestamp)) WHERE COALESCE(superseded, 0) = 0",
 		"CREATE INDEX IF NOT EXISTS idx_usage_active_device_source_log_jd ON usage_records(device_id, source, julianday(log_timestamp)) WHERE COALESCE(superseded, 0) = 0",
 		"CREATE INDEX IF NOT EXISTS idx_usage_active_source_model ON usage_records(source, model) WHERE COALESCE(superseded, 0) = 0",
 		"CREATE INDEX IF NOT EXISTS idx_usage_active_source_project ON usage_records(source, project) WHERE COALESCE(superseded, 0) = 0",
+		"CREATE INDEX IF NOT EXISTS idx_usage_needs_project_backfill ON usage_records(id) WHERE COALESCE(superseded, 0) = 0 AND file_path != '' AND (project IS NULL OR project = '' OR project = 'Default')",
+		"CREATE INDEX IF NOT EXISTS idx_usage_zero_cost_tokens ON usage_records(id) WHERE COALESCE(superseded, 0) = 0 AND cost_usd <= 0 AND (input_tokens > 0 OR cached_tokens > 0 OR cache_creation_tokens > 0 OR output_tokens > 0)",
 		"CREATE INDEX IF NOT EXISTS idx_usage_active_updated_at ON usage_records(julianday(COALESCE(updated_at, timestamp, log_timestamp)))",
 	} {
 		if err := execMigration(conn, stmt, false); err != nil {

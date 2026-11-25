@@ -3,6 +3,7 @@ package db_test
 import (
 	"ai-flight-dashboard/internal/db"
 	"ai-flight-dashboard/internal/model"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -515,5 +516,176 @@ func TestQueryStatsSourceFilters(t *testing.T) {
 	}
 	if len(projects) != 1 || projects[0].Project != "dashboard" {
 		t.Fatalf("expected only Codex project stats, got %+v", projects)
+	}
+}
+
+func TestQueryPeriodStatsBucketsEquivalenceAndEdgeCases(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	// 1. Empty windows returns empty non-nil slice.
+	emptyBuckets, err := database.QueryPeriodStatsBuckets(nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emptyBuckets == nil || len(emptyBuckets) != 0 {
+		t.Fatalf("expected empty non-nil slice for empty windows, got %#v", emptyBuckets)
+	}
+
+	// 2. Empty DB with mixed conditional and ALL windows returns zeroed buckets.
+	refNow := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	windows := []db.PeriodStatsWindow{
+		{Label: "1h", Since: refNow.Add(-1 * time.Hour)},
+		{Label: "24h", Since: refNow.Add(-24 * time.Hour)},
+		{Label: "7d", Since: refNow.Add(-7 * 24 * time.Hour)},
+		{Label: "ALL"},
+	}
+	zeroBuckets, err := database.QueryPeriodStatsBuckets(windows, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(zeroBuckets) != len(windows) {
+		t.Fatalf("expected %d zero buckets, got %d", len(windows), len(zeroBuckets))
+	}
+	for i, b := range zeroBuckets {
+		if b.Label != windows[i].Label || b.Cost != 0 || b.InputTokens != 0 || b.CachedTokens != 0 || b.CacheCreationTokens != 0 || b.OutputTokens != 0 || b.TimedOutputTokens != 0 || b.DurationMS != 0 || b.TimedEvents != 0 {
+			t.Fatalf("expected zero bucket for %s on empty DB, got %+v", windows[i].Label, b)
+		}
+	}
+
+	// 3. Seed mixed timestamp formats (RFC3339Nano, RFC3339, SQLite space-separated,
+	// timezone offset, exact boundary, invalid/NULL timestamp, superseded rows, timed rows).
+	type rawRow struct {
+		logTS         interface{}
+		source        string
+		modelName     string
+		input         int
+		cached        int
+		cacheCreation int
+		output        int
+		timedOutput   int
+		durationMS    int64
+		cost          float64
+		deviceID      string
+		superseded    int
+	}
+	boundary := refNow.Add(-1 * time.Hour) // 2026-05-07T11:00:00Z
+	rawRows := []rawRow{
+		// Exact boundary match in RFC3339 (no subseconds)
+		{"2026-05-07T11:00:00Z", "Claude Code", "claude-opus-4-7", 100, 20, 10, 40, 40, 1200, 1.11, "dev1", 0},
+		// 1 millisecond before 1h boundary -> excluded from 1h, included in 24h
+		{boundary.Add(-time.Millisecond).Format(time.RFC3339Nano), "Claude Code", "claude-opus-4-7", 200, 40, 15, 80, 0, 0, 2.22, "dev1", 0},
+		// Legacy SQLite space-separated datetime (inside 1h)
+		{"2026-05-07 11:30:00", "Codex", "gpt-5.5", 300, 60, 0, 90, 90, 900, 3.33, "dev1", 0},
+		// Timezone offset (+08:00 -> 11:15:00.500Z, inside 1h)
+		{"2026-05-07T19:15:00.500+08:00", "Gemini CLI", "gemini-2.5-pro", 400, 80, 5, 100, 50, 500, 4.44, "dev2", 0},
+		// RFC3339Nano 9-digit fractional second inside 7d
+		{"2026-05-02T08:09:10.123456789Z", "Claude Code", "claude-sonnet-4-6", 500, 100, 25, 150, 150, 2000, 5.55, "dev2", 0},
+		// Older than 7d -> only in ALL
+		{"2026-04-01T00:00:00Z", "Codex", "gpt-5.5", 600, 120, 0, 180, 0, 0, 6.66, "dev1", 0},
+		// NULL / invalid log_timestamp -> excluded from conditional windows, included in ALL
+		{nil, "Claude Code", "claude-opus-4-7", 70, 10, 5, 20, 20, 400, 0.77, "dev1", 0},
+		{"not-a-timestamp", "Claude Code", "claude-opus-4-7", 30, 5, 0, 10, 0, 0, 0.33, "dev1", 0},
+		// Superseded row -> always excluded
+		{"2026-05-07T11:45:00Z", "Claude Code", "claude-opus-4-7", 9999, 9999, 9999, 9999, 9999, 9999, 999.99, "dev1", 1},
+	}
+	for _, r := range rawRows {
+		if err := database.RawExec(
+			`INSERT INTO usage_records (log_timestamp, source, model, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, timed_output_tokens, duration_ms, cost_usd, file_path, device_id, superseded)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.logTS, r.source, r.modelName, r.input, r.cached, r.cacheCreation, r.output, r.timedOutput, r.durationMS, r.cost, "/mix.jsonl", r.deviceID, r.superseded,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Test out-of-order + duplicate + ALL-only window combinations across filters.
+	windowSets := [][]db.PeriodStatsWindow{
+		{
+			{Label: "ALL"},
+			{Label: "7d", Since: refNow.Add(-7 * 24 * time.Hour)},
+			{Label: "1h", Since: boundary},
+			{Label: "24h", Since: refNow.Add(-24 * time.Hour)},
+			{Label: "1h-dup", Since: boundary},
+		},
+		{
+			{Label: "ALL"},
+		},
+	}
+	filters := []struct {
+		deviceID string
+		source   string
+	}{
+		{"", ""},
+		{"all", ""},
+		{"dev1", ""},
+		{"", "Claude Code"},
+		{"dev1", "Claude Code"},
+		{"nonexistent", ""},
+	}
+
+	for _, winSet := range windowSets {
+		for _, f := range filters {
+			got, err := database.QueryPeriodStatsBuckets(winSet, f.deviceID, f.source)
+			if err != nil {
+				t.Fatalf("QueryPeriodStatsBuckets(%+v, %q, %q): %v", winSet, f.deviceID, f.source, err)
+			}
+			if len(got) != len(winSet) {
+				t.Fatalf("len(got)=%d want %d", len(got), len(winSet))
+			}
+
+			for i, w := range winSet {
+				var wantCost float64
+				var wantIn, wantCached, wantCacheCreation, wantOut int
+				if w.Since.IsZero() {
+					wantCost, wantIn, wantCached, wantCacheCreation, wantOut, err = database.QueryPeriodStatsAll(f.deviceID, f.source)
+				} else {
+					wantCost, wantIn, wantCached, wantCacheCreation, wantOut, err = database.QueryPeriodStatsSince(w.Since, f.deviceID, f.source)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				b := got[i]
+				if b.Label != w.Label ||
+					math.Abs(b.Cost-wantCost) > 1e-12 ||
+					b.InputTokens != wantIn ||
+					b.CachedTokens != wantCached ||
+					b.CacheCreationTokens != wantCacheCreation ||
+					b.OutputTokens != wantOut {
+					t.Fatalf("filter=(%q,%q) window=%s mismatch: got=%+v want=(cost=%v in=%d cached=%d cc=%d out=%d)",
+						f.deviceID, f.source, w.Label, b, wantCost, wantIn, wantCached, wantCacheCreation, wantOut)
+				}
+			}
+
+			// Verify "all" and "" produce identical results.
+			if f.deviceID == "all" {
+				emptyDev, err := database.QueryPeriodStatsBuckets(winSet, "", f.source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for i := range got {
+					if got[i] != emptyDev[i] {
+						t.Fatalf("device 'all' vs '' mismatch at %d: %+v vs %+v", i, got[i], emptyDev[i])
+					}
+				}
+			}
+		}
+	}
+
+	// Verify exact expected timing and token sums on ("", "").
+	gotAllFilters, err := database.QueryPeriodStatsBuckets(windows, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1h: 2026-05-07T11:00:00Z (timed 40, dur 1200, 1) + 2026-05-07 11:30:00 (timed 90, dur 900, 1) + 2026-05-07T19:15:00.500+08:00 (timed 50, dur 500, 1)
+	if gotAllFilters[0].TimedOutputTokens != 180 || gotAllFilters[0].DurationMS != 2600 || gotAllFilters[0].TimedEvents != 3 {
+		t.Fatalf("1h timing mismatch: %+v", gotAllFilters[0])
+	}
+	// ALL includes NULL row with timed 20, dur 400, plus 7d row timed 150, dur 2000 -> timedOutput 350, dur 5000, events 5
+	if gotAllFilters[3].TimedOutputTokens != 350 || gotAllFilters[3].DurationMS != 5000 || gotAllFilters[3].TimedEvents != 5 {
+		t.Fatalf("ALL timing mismatch: %+v", gotAllFilters[3])
 	}
 }

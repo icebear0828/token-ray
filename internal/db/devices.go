@@ -16,7 +16,7 @@ func (d *DB) QueryDevices() ([]string, error) {
 	}
 	defer rows.Close()
 
-	var devices []string
+	devices := make([]string, 0, 8)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
@@ -70,7 +70,7 @@ func (d *DB) QueryDeviceSummaries() ([]model.DeviceSummary, error) {
 	}
 	defer rows.Close()
 
-	var devices []model.DeviceSummary
+	devices := make([]model.DeviceSummary, 0, 8)
 	for rows.Next() {
 		var summary model.DeviceSummary
 		var firstSeen sql.NullString

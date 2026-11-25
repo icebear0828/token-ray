@@ -2,9 +2,14 @@ package main
 
 import (
 	"ai-flight-dashboard/internal/calculator"
+	"ai-flight-dashboard/internal/dashboard"
+	"ai-flight-dashboard/internal/db"
+	"ai-flight-dashboard/internal/model"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -278,4 +283,133 @@ func TestDynamicPricingURLsUseCurrentRepository(t *testing.T) {
 			t.Fatalf("dynamic pricing URL should use current repository: %s", url)
 		}
 	}
+}
+
+func TestSyncDynamicPricingAndRecalc(t *testing.T) {
+	t.Run("recalculates and clears statsCache only when pricing changes", func(t *testing.T) {
+		database, err := db.New(filepath.Join(t.TempDir(), "test.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer database.Close()
+
+		calc, err := calculator.NewFromBytes(embeddedPricing)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := database.InsertUsageWithTime(
+			model.TokenUsage{Source: "Claude Code", Model: "claude-opus-4-7", Project: "token", OutputTokens: 1_000_000, UUID: "row-1"},
+			25.00, time.Now().UTC(), "/a.jsonl", "local",
+		); err != nil {
+			t.Fatal(err)
+		}
+
+		cache := dashboard.NewStatsCache(time.Minute)
+		builds := 0
+		key := dashboard.StatsCacheKey{DeviceID: "all", Period: "ALL"}
+		_, _, err = cache.GetJSON(key, func() (*model.StatsResponse, error) {
+			builds++
+			return &model.StatsResponse{Periods: []model.PeriodCost{{Label: "ALL", Cost: float64(builds)}}}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Dynamic fetch returns unchanged rate -> skips recalc and keeps cache warm.
+		sameServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(embeddedPricing)
+		}))
+		defer sameServer.Close()
+
+		syncDynamicPricingAndRecalc(context.Background(), database, calc, cache, []string{sameServer.URL}, time.Second)
+		_, _, err = cache.GetJSON(key, func() (*model.StatsResponse, error) {
+			builds++
+			return &model.StatsResponse{Periods: []model.PeriodCost{{Label: "ALL", Cost: float64(builds)}}}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if builds != 1 {
+			t.Fatalf("expected statsCache to stay warm when pricing did not change and no $0 rows exist, got builds=%d", builds)
+		}
+
+		// Dynamic fetch updates claude-opus-4-7 output price -> recalculates DB and clears cache.
+		updatedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"models":{"claude-opus-4-7":{"input_price_per_m":5,"cached_price_per_m":0.5,"cache_creation_price_per_m":6.25,"output_price_per_m":10}}}`))
+		}))
+		defer updatedServer.Close()
+
+		syncDynamicPricingAndRecalc(context.Background(), database, calc, cache, []string{updatedServer.URL}, time.Second)
+
+		cost, _, _, _, _, err := database.QueryPeriodStatsAll("", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 10.00 {
+			t.Fatalf("expected updated DB cost 10.00, got %f", cost)
+		}
+
+		_, _, err = cache.GetJSON(key, func() (*model.StatsResponse, error) {
+			builds++
+			return &model.StatsResponse{Periods: []model.PeriodCost{{Label: "ALL", Cost: float64(builds)}}}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if builds != 2 {
+			t.Fatalf("expected statsCache to be cleared after dynamic pricing update, got builds=%d", builds)
+		}
+	})
+
+	t.Run("backfills zero-cost rows even when dynamic pricing fetch fails", func(t *testing.T) {
+		database, err := db.New(filepath.Join(t.TempDir(), "test.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer database.Close()
+
+		calc, err := calculator.NewFromBytes(embeddedPricing)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := database.InsertUsageWithTime(
+			model.TokenUsage{Source: "Claude Code", Model: "claude-opus-4-7", Project: "token", OutputTokens: 1_000_000, UUID: "zero-1"},
+			0, time.Now().UTC(), "/a.jsonl", "local",
+		); err != nil {
+			t.Fatal(err)
+		}
+
+		cache := dashboard.NewStatsCache(time.Minute)
+		builds := 0
+		key := dashboard.StatsCacheKey{DeviceID: "all", Period: "ALL"}
+		_, _, _ = cache.GetJSON(key, func() (*model.StatsResponse, error) {
+			builds++
+			return &model.StatsResponse{}, nil
+		})
+
+		failServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		}))
+		defer failServer.Close()
+
+		syncDynamicPricingAndRecalc(context.Background(), database, calc, cache, []string{failServer.URL}, time.Second)
+
+		cost, _, _, _, _, err := database.QueryPeriodStatsAll("", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cost != 25.00 {
+			t.Fatalf("expected zero-cost row backfilled to 25.00, got %f", cost)
+		}
+
+		_, _, _ = cache.GetJSON(key, func() (*model.StatsResponse, error) {
+			builds++
+			return &model.StatsResponse{}, nil
+		})
+		if builds != 2 {
+			t.Fatalf("expected statsCache cleared after zero-cost backfill, got builds=%d", builds)
+		}
+	})
 }

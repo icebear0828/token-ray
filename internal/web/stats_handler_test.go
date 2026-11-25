@@ -1,12 +1,16 @@
 package web_test
 
 import (
+	"ai-flight-dashboard/internal/config"
 	"ai-flight-dashboard/internal/model"
 	"ai-flight-dashboard/internal/testutil"
 	"ai-flight-dashboard/internal/web"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -317,5 +321,281 @@ func TestAPICacheSavings(t *testing.T) {
 	}
 	if data.CacheHitRate < 0 || data.CacheHitRate > 100 {
 		t.Errorf("cache hit rate should be 0-100, got %f", data.CacheHitRate)
+	}
+}
+
+func TestAPIStatsETagAnd304NotModified(t *testing.T) {
+	dataDir := t.TempDir()
+	config.SetDataDir(dataDir)
+	defer config.SetDataDir("")
+
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+
+	now := time.Now().UTC()
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{Source: "Claude Code", Model: "claude-opus-4-7", OutputTokens: 1_000_000},
+		25.00, now.Add(-5*time.Minute), "/a.jsonl", "local",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := web.NewHandler(database, calc, nil, nil, "", emptyFS)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+
+	// First request returns 200 with ETag and Cache-Control: no-cache.
+	resp1, err := client.Get(srv.URL + "/api/stats?period=30d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body1, err := io.ReadAll(resp1.Body)
+	resp1.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.StatusCode)
+	}
+	etag := resp1.Header.Get("ETag")
+	if !strings.HasPrefix(etag, `"`) || !strings.HasSuffix(etag, `"`) {
+		t.Fatalf("expected quoted ETag header, got %q", etag)
+	}
+	if cc := resp1.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("expected Cache-Control: no-cache, got %q", cc)
+	}
+	if len(body1) == 0 {
+		t.Fatal("expected non-empty JSON body")
+	}
+
+	// Exact, weak W/, comma-separated list, and wildcard If-None-Match all return 304 with 0 body bytes.
+	for _, inm := range []string{
+		etag,
+		"W/" + etag,
+		`"other-tag", W/` + etag + `, "another"`,
+		"*",
+	} {
+		req, err := http.NewRequest(http.MethodGet, srv.URL+"/api/stats?period=30d", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("If-None-Match", inm)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp304, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body304, err := io.ReadAll(resp304.Body)
+		resp304.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp304.StatusCode != http.StatusNotModified {
+			t.Fatalf("If-None-Match=%q expected 304, got %d", inm, resp304.StatusCode)
+		}
+		if len(body304) != 0 {
+			t.Fatalf("If-None-Match=%q expected 0 body bytes on 304, got %d", inm, len(body304))
+		}
+		if resp304.Header.Get("Content-Encoding") != "" {
+			t.Fatalf("304 must not set Content-Encoding, got %q", resp304.Header.Get("Content-Encoding"))
+		}
+		if resp304.Header.Get("ETag") != etag {
+			t.Fatalf("304 expected ETag %q, got %q", etag, resp304.Header.Get("ETag"))
+		}
+		if resp304.Header.Get("Cache-Control") != "no-cache" {
+			t.Fatalf("304 expected Cache-Control no-cache, got %q", resp304.Header.Get("Cache-Control"))
+		}
+	}
+
+	// Stale/mismatched If-None-Match returns 200 with full JSON.
+	reqMiss, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/stats?period=30d", nil)
+	reqMiss.Header.Set("If-None-Match", `"stale-etag"`)
+	respMiss, err := client.Do(reqMiss)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missBody, _ := io.ReadAll(respMiss.Body)
+	respMiss.Body.Close()
+	if respMiss.StatusCode != http.StatusOK || len(missBody) == 0 {
+		t.Fatalf("expected 200 with body for mismatched If-None-Match, got status=%d len=%d", respMiss.StatusCode, len(missBody))
+	}
+
+	// Updating pricing clears StatsCache and changes the ETag.
+	putReq, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/pricing", strings.NewReader(`[{
+		"model": "claude-opus-4-7",
+		"input_price_per_m": 0,
+		"cached_price_per_m": 0,
+		"cache_creation_price_per_m": 0,
+		"output_price_per_m": 10
+	}]`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp, err := client.Do(putReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putResp.Body.Close()
+	if putResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected pricing PUT 200, got %d", putResp.StatusCode)
+	}
+
+	reqAfter, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/stats?period=30d", nil)
+	reqAfter.Header.Set("If-None-Match", etag)
+	respAfter, err := client.Do(reqAfter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodyAfter, _ := io.ReadAll(respAfter.Body)
+	respAfter.Body.Close()
+	if respAfter.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 after cache invalidation, got %d", respAfter.StatusCode)
+	}
+	if respAfter.Header.Get("ETag") == etag {
+		t.Fatalf("expected new ETag after pricing update, still got %q", etag)
+	}
+	var updated model.StatsResponse
+	if err := json.Unmarshal(bodyAfter, &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Periods[len(updated.Periods)-1].Cost != 10 {
+		t.Fatalf("expected repriced cost 10, got %+v", updated.Periods)
+	}
+}
+
+func TestHTTPGzipMiddleware(t *testing.T) {
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+
+	now := time.Now().UTC()
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{Source: "Claude Code", Model: "claude-opus-4-7", InputTokens: 1000, OutputTokens: 200},
+		1.50, now.Add(-10*time.Minute), "/a.jsonl", "local",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := web.NewHandler(database, calc, nil, nil, "", emptyFS)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	// Disable automatic decompression so we verify real wire gzip headers & framing.
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+
+	// 1. /api/stats with Accept-Encoding: gzip compresses and round-trips.
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/stats?period=30d", nil)
+	req.Header.Set("Accept-Encoding", "br, gzip;q=0.8")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Header.Get("Content-Encoding") != "gzip" {
+		resp.Body.Close()
+		t.Fatalf("expected Content-Encoding: gzip, got %q", resp.Header.Get("Content-Encoding"))
+	}
+	if !strings.Contains(resp.Header.Get("Vary"), "Accept-Encoding") {
+		resp.Body.Close()
+		t.Fatalf("expected Vary to include Accept-Encoding, got %q", resp.Header.Get("Vary"))
+	}
+	gzReader, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		resp.Body.Close()
+		t.Fatalf("open gzip reader: %v", err)
+	}
+	decompressed, err := io.ReadAll(gzReader)
+	gzReader.Close()
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("decompress gzip body: %v", err)
+	}
+	var stats model.StatsResponse
+	if err := json.Unmarshal(decompressed, &stats); err != nil {
+		t.Fatalf("unmarshal decompressed stats: %v", err)
+	}
+	if len(stats.Periods) != 8 {
+		t.Fatalf("expected 8 periods after gzip round-trip, got %d", len(stats.Periods))
+	}
+
+	// 2. Static "/" with Accept-Encoding: gzip compresses cleanly.
+	staticReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	staticReq.Header.Set("Accept-Encoding", "gzip")
+	staticResp, err := client.Do(staticReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if staticResp.StatusCode != http.StatusOK {
+		staticResp.Body.Close()
+		t.Fatalf("expected 200 for /, got %d", staticResp.StatusCode)
+	}
+	if staticResp.Header.Get("Content-Encoding") != "gzip" {
+		staticResp.Body.Close()
+		t.Fatalf("expected Content-Encoding: gzip for /, got %q", staticResp.Header.Get("Content-Encoding"))
+	}
+	if !strings.Contains(staticResp.Header.Get("Vary"), "Accept-Encoding") {
+		staticResp.Body.Close()
+		t.Fatalf("expected Vary: Accept-Encoding for /, got %q", staticResp.Header.Get("Vary"))
+	}
+	staticGZ, err := gzip.NewReader(staticResp.Body)
+	if err != nil {
+		staticResp.Body.Close()
+		t.Fatalf("open static gzip reader: %v", err)
+	}
+	staticHTML, err := io.ReadAll(staticGZ)
+	staticGZ.Close()
+	staticResp.Body.Close()
+	if err != nil || !strings.Contains(strings.ToLower(string(staticHTML)), "<html") {
+		t.Fatalf("expected valid HTML after static gzip round-trip, err=%v len=%d", err, len(staticHTML))
+	}
+
+	// 3. Explicit q=0 or omitted Accept-Encoding returns plain JSON with Vary.
+	plainReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/stats?period=30d", nil)
+	plainReq.Header.Set("Accept-Encoding", "gzip;q=0")
+	plainResp, err := client.Do(plainReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainBody, _ := io.ReadAll(plainResp.Body)
+	plainResp.Body.Close()
+	if plainResp.Header.Get("Content-Encoding") != "" {
+		t.Fatalf("expected no Content-Encoding for gzip;q=0, got %q", plainResp.Header.Get("Content-Encoding"))
+	}
+	if !strings.Contains(plainResp.Header.Get("Vary"), "Accept-Encoding") {
+		t.Fatalf("expected Vary: Accept-Encoding even uncompressed, got %q", plainResp.Header.Get("Vary"))
+	}
+	if err := json.Unmarshal(plainBody, &stats); err != nil {
+		t.Fatalf("expected plain JSON for gzip;q=0: %v", err)
+	}
+
+	// 4. /download/ skips gzip middleware.
+	dlReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/download/dashboard", nil)
+	dlReq.Header.Set("Accept-Encoding", "gzip")
+	dlResp, err := client.Do(dlReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, dlResp.Body)
+	dlResp.Body.Close()
+	if dlResp.Header.Get("Content-Encoding") != "" {
+		t.Fatalf("/download/ must skip gzip, got Content-Encoding=%q", dlResp.Header.Get("Content-Encoding"))
+	}
+
+	// 5. Empty 201 response (POST /api/track) does not emit gzip stream or header.
+	trackReq, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/track", strings.NewReader(`{
+		"device_id": "remote",
+		"usage": {"source": "Claude Code", "model": "claude-opus-4-7", "input_tokens": 10, "output_tokens": 5}
+	}`))
+	trackReq.Header.Set("Accept-Encoding", "gzip")
+	trackReq.Header.Set("Content-Type", "application/json")
+	trackResp, err := client.Do(trackReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trackBody, _ := io.ReadAll(trackResp.Body)
+	trackResp.Body.Close()
+	if trackResp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 for /api/track, got %d", trackResp.StatusCode)
+	}
+	if len(trackBody) != 0 || trackResp.Header.Get("Content-Encoding") != "" {
+		t.Fatalf("empty 201 response must not be gzipped: len=%d encoding=%q", len(trackBody), trackResp.Header.Get("Content-Encoding"))
 	}
 }

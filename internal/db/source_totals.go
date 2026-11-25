@@ -224,7 +224,7 @@ func (d *DB) QuerySourceTotalsSince(since time.Time, deviceID string, source str
 	}
 	defer rows.Close()
 
-	var stats []SourceTotalStat
+	stats := make([]SourceTotalStat, 0, 8)
 	for rows.Next() {
 		var s SourceTotalStat
 		if err := rows.Scan(&s.Source, &s.Events,
@@ -269,7 +269,7 @@ func (d *DB) QuerySourceTotalsSummary(deviceID string, source string) ([]SourceT
 	}
 	defer rows.Close()
 
-	var stats []SourceTotalStat
+	stats := make([]SourceTotalStat, 0, 8)
 	for rows.Next() {
 		var s SourceTotalStat
 		if err := rows.Scan(&s.Source, &s.Events,
