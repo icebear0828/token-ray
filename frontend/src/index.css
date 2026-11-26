@@ -175,54 +175,6 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
 
-/* Dark-mode fallback styling for slide-over drawers and modal dialogs */
-html.dark [role="dialog"] {
-  background-color: #0F172A;
-  color: #F1F5F9;
-  border-color: #1E293B;
-}
-
-html.dark [role="dialog"] .bg-white {
-  background-color: #0F172A;
-}
-
-html.dark [role="dialog"] .bg-slate-50,
-html.dark [role="dialog"] .bg-slate-50\/70,
-html.dark [role="dialog"] .bg-slate-50\/80,
-html.dark [role="dialog"] .bg-slate-100 {
-  background-color: #1E293B;
-}
-
-html.dark [role="dialog"] .border-slate-100,
-html.dark [role="dialog"] .border-slate-200 {
-  border-color: #1E293B;
-}
-
-html.dark [role="dialog"] .text-slate-900 {
-  color: #F8FAFC;
-}
-
-html.dark [role="dialog"] .text-slate-800 {
-  color: #E2E8F0;
-}
-
-html.dark [role="dialog"] .text-slate-700 {
-  color: #CBD5E1;
-}
-
-html.dark [role="dialog"] .text-slate-600,
-html.dark [role="dialog"] .text-slate-500 {
-  color: #94A3B8;
-}
-
-html.dark [role="dialog"] input,
-html.dark [role="dialog"] select,
-html.dark [role="dialog"] textarea {
-  background-color: #090D16;
-  border-color: #334155;
-  color: #F1F5F9;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

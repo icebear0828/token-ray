@@ -62,6 +62,9 @@ const syncDocumentTheme = (theme: ThemeMode) => {
   if (typeof document === "undefined") return;
   document.documentElement.classList.toggle("dark", theme === "dark");
   document.documentElement.style.colorScheme = theme;
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", theme === "dark" ? "#090D16" : "#F8FAFC");
 };
 
 const DEFAULT_SOURCES = [
@@ -346,7 +349,6 @@ export function App() {
   const handleLanguageSwitch = () => {
     const next = i18n.language === "zh" ? "en" : "zh";
     i18n.changeLanguage(next);
-    localStorage.setItem("ai-flight-dashboard_lang", next);
   };
 
   const handleThemeToggle = () => {

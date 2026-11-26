@@ -48,13 +48,13 @@ func NewHandlerWithDeps(database *db.DB, calc *calculator.Calculator, wInst *wat
 		handlePlugins(w, r, deps.Plugins)
 	})
 	mux.HandleFunc("/api/plugins/install", authMiddleware(token, func(w http.ResponseWriter, r *http.Request) {
-		handlePluginInstall(w, r, deps.Plugins)
+		handlePluginInstall(w, r, deps.Plugins, statsCache)
 	}))
 	mux.HandleFunc("/api/plugins/index", func(w http.ResponseWriter, r *http.Request) {
 		handlePluginIndex(w, r, deps.Plugins)
 	})
 	mux.HandleFunc("/api/plugins/", authMiddleware(token, func(w http.ResponseWriter, r *http.Request) {
-		handlePluginAction(w, r, deps.Plugins)
+		handlePluginAction(w, r, deps.Plugins, statsCache)
 	}))
 
 	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {

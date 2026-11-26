@@ -31,10 +31,18 @@ type App struct {
 
 // NewApp creates a new App with references to the shared backend services.
 func NewApp(database *db.DB, calc *calculator.Calculator) *App {
+	return NewAppWithStatsCache(database, calc, nil)
+}
+
+// NewAppWithStatsCache creates a new App sharing statsCache with the HTTP layer.
+func NewAppWithStatsCache(database *db.DB, calc *calculator.Calculator, statsCache *dashboard.StatsCache) *App {
+	if statsCache == nil {
+		statsCache = dashboard.NewStatsCache(10 * time.Second)
+	}
 	return &App{
 		database:   database,
 		calc:       calc,
-		statsCache: dashboard.NewStatsCache(10 * time.Second),
+		statsCache: statsCache,
 	}
 }
 
@@ -83,7 +91,11 @@ func (a *App) GetCacheSavings(deviceID string) (*model.CacheSavingsResponse, err
 
 // SetDeviceAlias sets a display name for a device.
 func (a *App) SetDeviceAlias(deviceID, displayName string) error {
-	return a.database.SetDeviceAlias(deviceID, displayName)
+	if err := a.database.SetDeviceAlias(deviceID, displayName); err != nil {
+		return err
+	}
+	a.statsCache.Clear()
+	return nil
 }
 
 // --- Pricing Management (Phase 2) ---

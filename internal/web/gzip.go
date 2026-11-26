@@ -126,6 +126,9 @@ func (g *gzipResponseWriter) Write(p []byte) (int, error) {
 			g.compress = true
 			g.Header().Del("Content-Length")
 			g.Header().Set("Content-Encoding", "gzip")
+			if etag := g.Header().Get("ETag"); etag != "" && !strings.HasPrefix(etag, "W/") {
+				g.Header().Set("ETag", "W/"+etag)
+			}
 			g.ResponseWriter.WriteHeader(g.statusCode)
 			gw := gzipWriterPool.Get().(*gzip.Writer)
 			gw.Reset(g.ResponseWriter)

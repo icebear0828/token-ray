@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   emptyCharts,
   emptyStatsPayload,
+  fulfillConfig,
   fulfillEmptyLANScan,
   fulfillJSON,
   fulfillLANStatus,
@@ -315,6 +316,52 @@ test('layout remains overflow-free across 375, 768, 1024, and 1440px viewports',
     );
     expect(hasOverflow, `horizontal overflow at ${width}px`).toBe(false);
   }
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('dark mode preserves body dark surface and drawer control styles without unlayered override', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+
+  await mockBaseRoutes(page, buildSeededPayload());
+  await page.route('**/api/config', (route) => fulfillConfig(route));
+  await page.route('**/api/system/version', (route) =>
+    fulfillJSON(route, { version: 'v1.14.1', goos: 'darwin', goarch: 'arm64' })
+  );
+  await page.route('**/api/system/logs', (route) =>
+    fulfillJSON(route, { path: '/tmp/ai-flight-dashboard/stats' })
+  );
+
+  await page.goto('/');
+
+  await page.getByTestId('theme-toggle').click();
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(9, 13, 22)');
+
+  await page.reload();
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+  const reloadedBodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(reloadedBodyBg).toBe('rgb(9, 13, 22)');
+
+  await page.getByRole('button', { name: '系统配置' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+
+  const checkBtn = dialog.getByRole('button', { name: '检查更新' });
+  await expect(checkBtn).toBeVisible();
+
+  const [dialogBg, checkBtnBg] = await Promise.all([
+    dialog.evaluate((el) => getComputedStyle(el).backgroundColor),
+    checkBtn.evaluate((el) => getComputedStyle(el).backgroundColor),
+  ]);
+  expect(checkBtnBg).not.toBe(dialogBg);
+  expect(checkBtnBg).not.toBe('rgb(15, 23, 42)');
+
+  await checkBtn.hover();
+  await expect
+    .poll(() => checkBtn.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .not.toBe(checkBtnBg);
 
   expect(pageErrors).toEqual([]);
 });

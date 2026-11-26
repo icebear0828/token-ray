@@ -83,7 +83,7 @@ jobs:
       - name: Build macOS M-Series (Apple Silicon)
         run: |
           cd cmd/dashboard
-          wails build -platform darwin/arm64 -clean
+          wails build -platform darwin/arm64 -trimpath -clean
           mkdir -p ../../build/bin
           mv "build/bin/AI Flight Dashboard.app" "../../build/bin/AI Flight Dashboard.app"
           cd ../../build/bin
@@ -92,7 +92,7 @@ jobs:
       - name: Build macOS Intel
         run: |
           cd cmd/dashboard
-          wails build -platform darwin/amd64 -clean
+          wails build -platform darwin/amd64 -trimpath -clean
           mkdir -p ../../build/bin
           mv "build/bin/AI Flight Dashboard.app" "../../build/bin/AI Flight Dashboard.app"
           cd ../../build/bin
@@ -128,7 +128,7 @@ jobs:
       - name: Build Windows App
         run: |
           cd cmd/dashboard
-          wails build -platform windows/amd64 -clean
+          wails build -platform windows/amd64 -trimpath -clean
           mkdir -p ../../build/bin
           mv "build/bin/ai-flight-dashboard.exe" "../../build/bin/"
       - name: Archive App
@@ -169,7 +169,7 @@ jobs:
       - name: Build Linux App
         run: |
           cd cmd/dashboard
-          wails build -platform linux/amd64 -clean
+          wails build -platform linux/amd64 -trimpath -clean
           mkdir -p ../../build/bin
           mv "build/bin/ai-flight-dashboard" "../../build/bin/"
       - name: Archive App

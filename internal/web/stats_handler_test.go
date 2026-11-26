@@ -600,6 +600,84 @@ func TestHTTPGzipMiddleware(t *testing.T) {
 	}
 }
 
+func TestHTTPGzipWeakensStrongETagAndSupports304(t *testing.T) {
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+
+	now := time.Now().UTC()
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{Source: "Claude Code", Model: "claude-opus-4-7", InputTokens: 1000, OutputTokens: 200},
+		1.50, now.Add(-10*time.Minute), "/a.jsonl", "local",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := web.NewHandler(database, calc, nil, nil, "", emptyFS)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+
+	// 1. Uncompressed GET returns a strong ETag.
+	plainResp, err := client.Get(srv.URL + "/api/stats?period=30d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(plainResp.Body)
+	plainResp.Body.Close()
+	if plainResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for plain GET, got %d", plainResp.StatusCode)
+	}
+	identityETag := plainResp.Header.Get("ETag")
+	if !strings.HasPrefix(identityETag, `"`) {
+		t.Fatalf("expected strong quoted ETag for uncompressed response, got %q", identityETag)
+	}
+
+	// 2. Gzipped GET converts the strong ETag into a weak ETag (RFC 9110 §8.8.3).
+	gzReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/stats?period=30d", nil)
+	gzReq.Header.Set("Accept-Encoding", "gzip")
+	gzResp, err := client.Do(gzReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(gzResp.Body)
+	gzResp.Body.Close()
+	if gzResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for gzip GET, got %d", gzResp.StatusCode)
+	}
+	if gzResp.Header.Get("Content-Encoding") != "gzip" {
+		t.Fatalf("expected Content-Encoding: gzip, got %q", gzResp.Header.Get("Content-Encoding"))
+	}
+	gzETag := gzResp.Header.Get("ETag")
+	wantWeakETag := "W/" + identityETag
+	if gzETag == identityETag || gzETag != wantWeakETag {
+		t.Fatalf("expected gzipped ETag %q (weakened from %q), got %q", wantWeakETag, identityETag, gzETag)
+	}
+
+	// 3. Conditional gzip GET with the weak ETag returns 304 with 0 body bytes and no Content-Encoding.
+	condReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/stats?period=30d", nil)
+	condReq.Header.Set("Accept-Encoding", "gzip")
+	condReq.Header.Set("If-None-Match", gzETag)
+	condResp, err := client.Do(condReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	condBody, err := io.ReadAll(condResp.Body)
+	condResp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if condResp.StatusCode != http.StatusNotModified {
+		t.Fatalf("expected 304 for matching weak ETag, got %d", condResp.StatusCode)
+	}
+	if len(condBody) != 0 {
+		t.Fatalf("expected 0 body bytes on 304, got %d", len(condBody))
+	}
+	if condResp.Header.Get("Content-Encoding") != "" {
+		t.Fatalf("expected empty Content-Encoding on 304, got %q", condResp.Header.Get("Content-Encoding"))
+	}
+}
+
 func TestAPIStatsCacheInvalidatedByMutations(t *testing.T) {
 	database, calc := testutil.NewTestDBAndCalc(t)
 	defer database.Close()

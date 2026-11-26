@@ -23,3 +23,13 @@ test('Release workflow updates release notes without relying on git checkout con
     /gh release edit "\$GITHUB_REF_NAME" --repo "\$GITHUB_REPOSITORY" --title "\$GITHUB_REF_NAME" --notes-file release-notes\.md/,
   );
 });
+
+test('Release workflow builds Wails binaries with -trimpath', () => {
+  const workflow = fs.readFileSync('.github/workflows/release.yml', 'utf8');
+  const buildLines = workflow.match(/^\s*wails build .+$/gm) ?? [];
+
+  assert.equal(buildLines.length, 4, `expected 4 wails build commands, got ${buildLines.length}`);
+  for (const line of buildLines) {
+    assert.match(line, /\s-trimpath(?:\s|$)/, `expected -trimpath in ${line.trim()}`);
+  }
+});

@@ -296,6 +296,7 @@ func main() {
 	}
 
 	sink := source.NewDBSink(database, calc, *deviceID, func(u model.TokenUsage) {
+		statsCache.Clear()
 		select {
 		case w.UsageChan <- u:
 		default:
@@ -402,6 +403,7 @@ func main() {
 							log.Printf("Failed to insert usage for device %s: %v", effectiveDevice, err)
 							continue
 						}
+						statsCache.Clear()
 					}
 					var activeLAN *lan.LAN
 					if lanController != nil {
@@ -421,7 +423,7 @@ func main() {
 		lanController = newRuntimeLANController(ctx, *lanMode, *deviceID, *port, *token, database, w.BroadcastChan, w.UsageChan, startLANHTTPServer, startLANGoroutines)
 		startDBDrain()
 
-		app := desktop.NewApp(database, calc)
+		app := desktop.NewAppWithStatsCache(database, calc, statsCache)
 		// Linux status-notifier support varies by desktop environment. On
 		// Linux the window quits on close (see gui_lifecycle.go), so a tray is
 		// optional; avoid opening a DBus status-notifier connection when it
