@@ -19,7 +19,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
     export CGO_LDFLAGS="-framework UniformTypeIdentifiers"
 fi
 
-go build -tags desktop,production -ldflags "-w -s" -o build/bin/ai-flight-dashboard ./cmd/dashboard
+go build -trimpath -ldflags="-s -w" -tags desktop,production -o build/bin/ai-flight-dashboard ./cmd/dashboard
 
 echo ""
 echo "✅ Desktop binary built at: build/bin/ai-flight-dashboard"

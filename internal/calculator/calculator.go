@@ -3,6 +3,7 @@ package calculator
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"strings"
@@ -47,6 +48,8 @@ type PricingTable struct {
 
 type Calculator struct {
 	mu     sync.RWMutex
+	base   map[string]ModelPrice
+	custom map[string]ModelPrice
 	prices PricingTable
 }
 
@@ -59,7 +62,13 @@ func NewFromBytes(data []byte) (*Calculator, error) {
 	if pt.Models == nil {
 		pt.Models = make(map[string]ModelPrice)
 	}
-	return &Calculator{prices: pt}, nil
+	base := make(map[string]ModelPrice, len(pt.Models))
+	maps.Copy(base, pt.Models)
+	return &Calculator{
+		base:   base,
+		custom: make(map[string]ModelPrice),
+		prices: pt,
+	}, nil
 }
 
 // New creates a Calculator by reading a pricing JSON file from disk.
@@ -71,11 +80,43 @@ func New(pricingFilePath string) (*Calculator, error) {
 	return NewFromBytes(data)
 }
 
+// ReplaceBasePricing atomically replaces the base pricing table from JSON while
+// preserving any custom overrides applied via UpdatePrices or LoadCustomPrices.
+// It reports whether the effective pricing map changed.
+func (c *Calculator) ReplaceBasePricing(data []byte) (bool, error) {
+	var pt PricingTable
+	if err := json.Unmarshal(data, &pt); err != nil {
+		return false, fmt.Errorf("unmarshal pricing table: %w", err)
+	}
+	if pt.Models == nil {
+		pt.Models = make(map[string]ModelPrice)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	merged := make(map[string]ModelPrice, len(pt.Models)+len(c.custom))
+	maps.Copy(merged, pt.Models)
+	maps.Copy(merged, c.custom)
+
+	changed := !maps.Equal(c.prices.Models, merged)
+	c.base = pt.Models
+	c.prices.Models = merged
+	return changed, nil
+}
+
 // UpdatePrices merges custom pricing into the calculator.
 func (c *Calculator) UpdatePrices(customPrices map[string]ModelPrice) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.custom == nil {
+		c.custom = make(map[string]ModelPrice, len(customPrices))
+	}
+	if c.prices.Models == nil {
+		c.prices.Models = make(map[string]ModelPrice, len(customPrices))
+	}
 	for k, v := range customPrices {
+		c.custom[k] = v
 		c.prices.Models[k] = v
 	}
 }
@@ -135,17 +176,17 @@ func (c *Calculator) CalculateCost(model string, inputTokens, cachedTokens, cach
 	if !ok {
 		return 0, nil // unknown model, skip silently
 	}
-	
+
 	baseInput := inputTokens - cachedTokens - cacheCreationTokens
 	if baseInput < 0 {
 		baseInput = 0
 	}
-	
+
 	inputCost := (float64(baseInput) / 1_000_000.0) * price.InputPricePerM
 	cachedCost := (float64(cachedTokens) / 1_000_000.0) * price.CachedPricePerM
 	cacheCreationCost := (float64(cacheCreationTokens) / 1_000_000.0) * price.CacheCreationPricePerM
 	outputCost := (float64(outputTokens) / 1_000_000.0) * price.OutputPricePerM
-	
+
 	return inputCost + cachedCost + cacheCreationCost + outputCost, nil
 }
 

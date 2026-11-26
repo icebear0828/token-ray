@@ -4,9 +4,23 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+function resolvePort(argv, envPort) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--port' && argv[i + 1]) {
+      return argv[i + 1];
+    }
+    if (arg.startsWith('--port=')) {
+      return arg.slice('--port='.length);
+    }
+  }
+  return envPort ?? '19183';
+}
+
+const port = resolvePort(process.argv.slice(2), process.env.PW_PORT);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
-const dataDir = path.join(os.tmpdir(), 'ai-flight-dashboard-playwright');
+const dataDir = path.join(os.tmpdir(), 'ai-flight-dashboard-playwright-' + port);
 const goCache = path.join(os.tmpdir(), 'ai-flight-dashboard-go-cache');
 
 fs.rmSync(dataDir, { recursive: true, force: true });
@@ -22,7 +36,7 @@ const child = spawn('go', [
   '--data-dir',
   dataDir,
   '--port',
-  '19183',
+  port,
 ], {
   cwd: repoRoot,
   env: {

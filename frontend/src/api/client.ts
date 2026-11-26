@@ -32,6 +32,25 @@ const str = (value: unknown, fallback = ""): string => {
 const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
+const ETAG_CACHE_LIMIT = 64;
+
+interface EtagCacheEntry {
+  etag: string;
+  payload: unknown;
+}
+
+const etagCache = new Map<string, EtagCacheEntry>();
+
+const rememberEtag = (url: string, etag: string, payload: unknown): void => {
+  etagCache.delete(url);
+  etagCache.set(url, { etag, payload });
+  while (etagCache.size > ETAG_CACHE_LIMIT) {
+    const oldest = etagCache.keys().next().value;
+    if (oldest === undefined) break;
+    etagCache.delete(oldest);
+  }
+};
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
@@ -44,15 +63,28 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       externalSignal.addEventListener("abort", abortFromExternal, { once: true });
     }
   }
+  const method = (init?.method ?? "GET").toUpperCase();
+  const isGet = method === "GET";
+  const cached = isGet ? etagCache.get(url) : undefined;
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (cached && !headers.has("If-None-Match")) {
+    headers.set("If-None-Match", cached.etag);
+  }
+
   try {
     const res = await fetch(url, {
       ...init,
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
+      headers,
     });
+    if (isGet && res.status === 304 && cached) {
+      const nextEtag = res.headers.get("ETag") || cached.etag;
+      rememberEtag(url, nextEtag, cached.payload);
+      return cached.payload as T;
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new Error(`HTTP ${res.status}${body ? `: ${body}` : ""}`);
@@ -65,7 +97,16 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     if (!text || text.trim() === "") {
       return null as T;
     }
-    return JSON.parse(text) as T;
+    const payload = JSON.parse(text) as T;
+    if (isGet && res.status === 200) {
+      const etag = res.headers.get("ETag");
+      if (etag) {
+        rememberEtag(url, etag, payload);
+      } else {
+        etagCache.delete(url);
+      }
+    }
+    return payload;
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener("abort", abortFromExternal);

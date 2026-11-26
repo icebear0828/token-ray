@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"ai-flight-dashboard/internal/dashboard"
 	"ai-flight-dashboard/internal/plugin"
 	"ai-flight-dashboard/internal/source"
 )
@@ -64,7 +65,7 @@ func handlePlugins(w http.ResponseWriter, r *http.Request, ctl PluginController)
 	_ = json.NewEncoder(w).Encode(installed)
 }
 
-func handlePluginInstall(w http.ResponseWriter, r *http.Request, ctl PluginController) {
+func handlePluginInstall(w http.ResponseWriter, r *http.Request, ctl PluginController, statsCache *dashboard.StatsCache) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -88,7 +89,7 @@ func handlePluginInstall(w http.ResponseWriter, r *http.Request, ctl PluginContr
 		}
 		defer file.Close()
 		manifest, err := ctl.InstallZip(file)
-		writePluginResult(w, manifest, err)
+		writePluginResult(w, manifest, err, statsCache)
 		return
 	}
 
@@ -101,7 +102,7 @@ func handlePluginInstall(w http.ResponseWriter, r *http.Request, ctl PluginContr
 		return
 	}
 	manifest, err := ctl.InstallURL(r.Context(), req.URL, req.SHA256)
-	writePluginResult(w, manifest, err)
+	writePluginResult(w, manifest, err, statsCache)
 }
 
 func handlePluginIndex(w http.ResponseWriter, r *http.Request, ctl PluginController) {
@@ -122,7 +123,7 @@ func handlePluginIndex(w http.ResponseWriter, r *http.Request, ctl PluginControl
 	_, _ = w.Write(data)
 }
 
-func handlePluginAction(w http.ResponseWriter, r *http.Request, ctl PluginController) {
+func handlePluginAction(w http.ResponseWriter, r *http.Request, ctl PluginController, statsCache *dashboard.StatsCache) {
 	if ctl == nil {
 		http.Error(w, "Plugins are not available", http.StatusServiceUnavailable)
 		return
@@ -140,23 +141,26 @@ func handlePluginAction(w http.ResponseWriter, r *http.Request, ctl PluginContro
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		statsCache.Clear()
 		w.WriteHeader(http.StatusOK)
 	case r.Method == http.MethodPost && (action == "enable" || action == "disable"):
 		if err := ctl.SetEnabled(id, action == "enable"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		statsCache.Clear()
 		w.WriteHeader(http.StatusOK)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func writePluginResult(w http.ResponseWriter, manifest plugin.Manifest, err error) {
+func writePluginResult(w http.ResponseWriter, manifest plugin.Manifest, err error, statsCache *dashboard.StatsCache) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	statsCache.Clear()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(manifest)
 }

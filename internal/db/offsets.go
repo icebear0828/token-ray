@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 )
 
 // GetOffset returns the last scanned byte offset for a file. Returns 0 if not found.
@@ -117,11 +118,41 @@ func (d *DB) ListKnownFiles() ([]string, error) {
 	return files, rows.Err()
 }
 
-// BackfillProjectsFromFilePaths recalculates Default project names for records
-// that still have their originating log path.
+// HasRecordsNeedingProjectBackfill checks with an indexed LIMIT 1 query whether
+// any active usage rows still require file-path project backfill.
+func (d *DB) HasRecordsNeedingProjectBackfill() (bool, error) {
+	var exists int
+	err := d.conn.QueryRow("SELECT 1 FROM usage_records WHERE " + activeUsagePredicate + " AND file_path != '' AND (project IS NULL OR project = '' OR project = 'Default') LIMIT 1").Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
+}
+
+// HasZeroCostUsageRecords checks with an indexed LIMIT 1 query whether any
+// active non-zero-token usage rows currently have a $0 (or non-positive) cost.
+func (d *DB) HasZeroCostUsageRecords() (bool, error) {
+	var exists int
+	err := d.conn.QueryRow("SELECT 1 FROM usage_records WHERE " + activeUsagePredicate + " AND cost_usd <= 0 AND (input_tokens > 0 OR cached_tokens > 0 OR cache_creation_tokens > 0 OR output_tokens > 0) LIMIT 1").Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
+}
+
 // BackfillProjectsFromFilePaths recalculates Default project names for records
 // that still have their originating log path.
 func (d *DB) BackfillProjectsFromFilePaths(extractProject func(string) string) (int64, error) {
+	needed, err := d.HasRecordsNeedingProjectBackfill()
+	if err != nil || !needed {
+		return 0, err
+	}
 	rows, err := d.conn.Query("SELECT id, file_path FROM usage_records WHERE " + activeUsagePredicate + " AND file_path != '' AND (project IS NULL OR project = '' OR project = 'Default')")
 	if err != nil {
 		return 0, err

@@ -3,6 +3,8 @@ package db
 import (
 	"ai-flight-dashboard/internal/model"
 	"database/sql"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -33,106 +35,167 @@ func (d *DB) QueryPeriodStatsSince(since time.Time, deviceID string, source stri
 
 // QueryPeriodStatsBuckets returns multiple period aggregates in a single scan.
 // A zero Since value means the all-time bucket.
-// QueryPeriodStatsBuckets returns multiple period aggregates in a single scan.
-// A zero Since value means the all-time bucket.
 func (d *DB) QueryPeriodStatsBuckets(windows []PeriodStatsWindow, deviceID string, source string) ([]PeriodStatsBucket, error) {
 	if len(windows) == 0 {
 		return []PeriodStatsBucket{}, nil
 	}
 
-	var query strings.Builder
-	query.WriteString("SELECT ")
-	args := make([]interface{}, 0, len(windows)*5+2)
+	// Collect unique conditional window timestamps sorted newest-first so each
+	// active row falls into a single disjoint bucket in one pass, then accumulate
+	// prefix sums in Go.
+	type condBound struct {
+		since time.Time
+		ts    string
+	}
+	uniqueBounds := make([]condBound, 0, len(windows))
+	for _, window := range windows {
+		if window.Since.IsZero() {
+			continue
+		}
+		ts := formatLogTimestamp(window.Since)
+		seen := false
+		for _, b := range uniqueBounds {
+			if b.ts == ts {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			uniqueBounds = append(uniqueBounds, condBound{since: window.Since.UTC(), ts: ts})
+		}
+	}
+	slices.SortFunc(uniqueBounds, func(a, b condBound) int {
+		// Newest (largest Since) first.
+		return b.since.Compare(a.since)
+	})
+
+	windowBoundIdx := make([]int, len(windows))
 	for i, window := range windows {
-		if i > 0 {
-			query.WriteString(", ")
+		if window.Since.IsZero() {
+			windowBoundIdx[i] = len(uniqueBounds)
+			continue
 		}
-		conditional := !window.Since.IsZero()
-		appendPeriodAggregateExpr(&query, "cost_usd", conditional)
-		query.WriteString(", ")
-		appendPeriodAggregateExpr(&query, "input_tokens", conditional)
-		query.WriteString(", ")
-		appendPeriodAggregateExpr(&query, "cached_tokens", conditional)
-		query.WriteString(", ")
-		appendPeriodAggregateExpr(&query, "cache_creation_tokens", conditional)
-		query.WriteString(", ")
-		appendPeriodAggregateExpr(&query, "output_tokens", conditional)
-		query.WriteString(", ")
-		appendPeriodAggregateExpr(&query, "timed_output_tokens", conditional)
-		query.WriteString(", ")
-		appendPeriodAggregateExpr(&query, "duration_ms", conditional)
-		query.WriteString(", ")
-		appendPeriodTimedEventExpr(&query, conditional)
-		if conditional {
-			since := formatLogTimestamp(window.Since)
-			args = append(args, since, since, since, since, since, since, since, since)
+		ts := formatLogTimestamp(window.Since)
+		for j, b := range uniqueBounds {
+			if b.ts == ts {
+				windowBoundIdx[i] = j
+				break
+			}
 		}
 	}
-	query.WriteString(" FROM usage_records WHERE ")
-	query.WriteString(activeUsagePredicate)
 
-	if deviceID != "" && deviceID != "all" {
-		query.WriteString(" AND device_id = ?")
-		args = append(args, deviceID)
+	numGroups := len(uniqueBounds) + 1
+	type groupAgg struct {
+		cost          float64
+		input         int
+		cached        int
+		cacheCreation int
+		output        int
+		timedOutput   int
+		duration      int64
+		timedEvents   int
 	}
-	if source != "" {
-		query.WriteString(" AND source = ?")
-		args = append(args, source)
+	groups := make([]groupAgg, numGroups)
+
+	if len(uniqueBounds) == 0 {
+		query := "SELECT COALESCE(SUM(cost_usd), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(cached_tokens), 0), COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(timed_output_tokens), 0), COALESCE(SUM(duration_ms), 0), COALESCE(SUM(CASE WHEN duration_ms > 0 THEN 1 ELSE 0 END), 0) FROM usage_records WHERE " + activeUsagePredicate
+		var args []interface{}
+		if deviceID != "" && deviceID != "all" {
+			query += " AND device_id = ?"
+			args = append(args, deviceID)
+		}
+		if source != "" {
+			query += " AND source = ?"
+			args = append(args, source)
+		}
+		var g groupAgg
+		if err := d.conn.QueryRow(query, args...).Scan(&g.cost, &g.input, &g.cached, &g.cacheCreation, &g.output, &g.timedOutput, &g.duration, &g.timedEvents); err != nil {
+			return nil, err
+		}
+		groups[0] = g
+	} else {
+		var query strings.Builder
+		args := make([]interface{}, 0, len(uniqueBounds)+2)
+		query.WriteString("WITH bounds AS MATERIALIZED (SELECT ")
+		for i, b := range uniqueBounds {
+			if i > 0 {
+				query.WriteString(", ")
+			}
+			query.WriteString("julianday(?) AS b")
+			query.WriteString(strconv.Itoa(i))
+			args = append(args, b.ts)
+		}
+		query.WriteString("), active AS MATERIALIZED (SELECT julianday(log_timestamp) AS jd, cost_usd, input_tokens, cached_tokens, cache_creation_tokens, output_tokens, timed_output_tokens, duration_ms FROM usage_records WHERE ")
+		query.WriteString(activeUsagePredicate)
+		if deviceID != "" && deviceID != "all" {
+			query.WriteString(" AND device_id = ?")
+			args = append(args, deviceID)
+		}
+		if source != "" {
+			query.WriteString(" AND source = ?")
+			args = append(args, source)
+		}
+		query.WriteString(") SELECT CASE")
+		for i := range uniqueBounds {
+			query.WriteString(" WHEN active.jd >= (SELECT b")
+			query.WriteString(strconv.Itoa(i))
+			query.WriteString(" FROM bounds) THEN ")
+			query.WriteString(strconv.Itoa(i))
+		}
+		query.WriteString(" ELSE ")
+		query.WriteString(strconv.Itoa(len(uniqueBounds)))
+		query.WriteString(" END AS grp, COALESCE(SUM(active.cost_usd), 0), COALESCE(SUM(active.input_tokens), 0), COALESCE(SUM(active.cached_tokens), 0), COALESCE(SUM(active.cache_creation_tokens), 0), COALESCE(SUM(active.output_tokens), 0), COALESCE(SUM(active.timed_output_tokens), 0), COALESCE(SUM(active.duration_ms), 0), COALESCE(SUM(CASE WHEN active.duration_ms > 0 THEN 1 ELSE 0 END), 0) FROM active GROUP BY grp")
+
+		rows, err := d.conn.Query(query.String(), args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var grp int
+			var g groupAgg
+			if err := rows.Scan(&grp, &g.cost, &g.input, &g.cached, &g.cacheCreation, &g.output, &g.timedOutput, &g.duration, &g.timedEvents); err != nil {
+				return nil, err
+			}
+			if grp >= 0 && grp < numGroups {
+				groups[grp] = g
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
 
-	values := make([]struct {
-		cost          sql.NullFloat64
-		input         sql.NullInt64
-		cached        sql.NullInt64
-		cacheCreation sql.NullInt64
-		output        sql.NullInt64
-		timedOutput   sql.NullInt64
-		duration      sql.NullInt64
-		timedEvents   sql.NullInt64
-	}, len(windows))
-	scanArgs := make([]interface{}, 0, len(windows)*8)
-	for i := range values {
-		scanArgs = append(scanArgs, &values[i].cost, &values[i].input, &values[i].cached, &values[i].cacheCreation, &values[i].output, &values[i].timedOutput, &values[i].duration, &values[i].timedEvents)
-	}
-
-	if err := d.conn.QueryRow(query.String(), args...).Scan(scanArgs...); err != nil {
-		return nil, err
+	// Prefix sum: groups[i] accumulates all rows >= uniqueBounds[i], and
+	// groups[len(uniqueBounds)] holds the all-time totals.
+	for i := 1; i < len(groups); i++ {
+		groups[i].cost += groups[i-1].cost
+		groups[i].input += groups[i-1].input
+		groups[i].cached += groups[i-1].cached
+		groups[i].cacheCreation += groups[i-1].cacheCreation
+		groups[i].output += groups[i-1].output
+		groups[i].timedOutput += groups[i-1].timedOutput
+		groups[i].duration += groups[i-1].duration
+		groups[i].timedEvents += groups[i-1].timedEvents
 	}
 
 	buckets := make([]PeriodStatsBucket, 0, len(windows))
 	for i, window := range windows {
+		g := groups[windowBoundIdx[i]]
 		buckets = append(buckets, PeriodStatsBucket{
 			Label:               window.Label,
-			Cost:                values[i].cost.Float64,
-			InputTokens:         int(values[i].input.Int64),
-			CachedTokens:        int(values[i].cached.Int64),
-			CacheCreationTokens: int(values[i].cacheCreation.Int64),
-			OutputTokens:        int(values[i].output.Int64),
-			TimedOutputTokens:   int(values[i].timedOutput.Int64),
-			DurationMS:          values[i].duration.Int64,
-			TimedEvents:         int(values[i].timedEvents.Int64),
+			Cost:                g.cost,
+			InputTokens:         g.input,
+			CachedTokens:        g.cached,
+			CacheCreationTokens: g.cacheCreation,
+			OutputTokens:        g.output,
+			TimedOutputTokens:   g.timedOutput,
+			DurationMS:          g.duration,
+			TimedEvents:         g.timedEvents,
 		})
 	}
 	return buckets, nil
-}
-func appendPeriodAggregateExpr(query *strings.Builder, column string, conditional bool) {
-	if conditional {
-		query.WriteString("COALESCE(SUM(CASE WHEN julianday(log_timestamp) >= julianday(?) THEN ")
-		query.WriteString(column)
-		query.WriteString(" ELSE 0 END), 0)")
-		return
-	}
-	query.WriteString("COALESCE(SUM(")
-	query.WriteString(column)
-	query.WriteString("), 0)")
-}
-
-func appendPeriodTimedEventExpr(query *strings.Builder, conditional bool) {
-	query.WriteString("COALESCE(SUM(CASE WHEN duration_ms > 0")
-	if conditional {
-		query.WriteString(" AND julianday(log_timestamp) >= julianday(?)")
-	}
-	query.WriteString(" THEN 1 ELSE 0 END), 0)")
 }
 
 // QueryPeriodStatsAll returns total cumulative cost and token breakdown.
@@ -185,7 +248,7 @@ func (d *DB) QueryTokenSourceSummaries(since time.Time, deviceID string) ([]mode
 	}
 	defer rows.Close()
 
-	var summaries []model.TokenSourceSummary
+	summaries := make([]model.TokenSourceSummary, 0, 8)
 	for rows.Next() {
 		var summary model.TokenSourceSummary
 		if err := rows.Scan(&summary.Source, &summary.Tokens24h, &summary.TokensTotal, &summary.CostTotal); err != nil {
@@ -228,7 +291,7 @@ func (d *DB) QueryDailyCostBuckets(startInclusive time.Time, endExclusive time.T
 	}
 	defer rows.Close()
 
-	buckets := []model.DailyCostBucket{}
+	buckets := make([]model.DailyCostBucket, 0, 32)
 	for rows.Next() {
 		var bucket model.DailyCostBucket
 		if err := rows.Scan(&bucket.Date, &bucket.Cost, &bucket.Tokens); err != nil {
@@ -274,7 +337,7 @@ func (d *DB) QueryCalendarHeatmapBuckets(startInclusive time.Time, endExclusive 
 	}
 	defer rows.Close()
 
-	buckets := []model.CalendarHeatmapBucket{}
+	buckets := make([]model.CalendarHeatmapBucket, 0, 32)
 	for rows.Next() {
 		var bucket model.CalendarHeatmapBucket
 		if err := rows.Scan(&bucket.Date, &bucket.Tokens, &bucket.Cost, &bucket.Events); err != nil {
@@ -309,7 +372,7 @@ func (d *DB) QueryToolShareBuckets(startInclusive time.Time, endExclusive time.T
 	}
 	defer rows.Close()
 
-	buckets := []model.ToolShareBucket{}
+	buckets := make([]model.ToolShareBucket, 0, 8)
 	for rows.Next() {
 		var bucket model.ToolShareBucket
 		if err := rows.Scan(&bucket.Source, &bucket.Tokens, &bucket.TotalCost, &bucket.Events); err != nil {
@@ -383,7 +446,7 @@ func (d *DB) QueryStatsSince(since time.Time, deviceID string, source string) ([
 	}
 	defer rows.Close()
 
-	var stats []ModelStat
+	stats := make([]ModelStat, 0, 16)
 	for rows.Next() {
 		var s ModelStat
 		if err := rows.Scan(&s.Source, &s.Model, &s.Events,
@@ -435,7 +498,7 @@ func (d *DB) QueryProjectStatsSince(since time.Time, deviceID string, source str
 	}
 	defer rows.Close()
 
-	var stats []model.ProjectStat
+	stats := make([]model.ProjectStat, 0, 16)
 	for rows.Next() {
 		var s model.ProjectStat
 		if err := rows.Scan(&s.Project, &s.Events,
@@ -472,7 +535,7 @@ func (d *DB) QueryUsageRecords(since time.Time, deviceID string) ([]UsageRecord,
 	}
 	defer rows.Close()
 
-	var records []UsageRecord
+	records := make([]UsageRecord, 0, 64)
 	for rows.Next() {
 		var r UsageRecord
 		if err := rows.Scan(&r.Model, &r.InputTokens, &r.CachedTokens, &r.CacheCreationTokens, &r.OutputTokens, &r.CostUSD); err != nil {

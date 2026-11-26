@@ -14,11 +14,18 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      "react-i18next": path.resolve(__dirname, "src/i18n.ts"),
+      i18next: path.resolve(__dirname, "src/i18n.ts"),
     },
   },
   build: {
     outDir: "../internal/web/dist",
     emptyOutDir: true,
+    target: "es2022",
+    cssMinify: true,
+  },
+  esbuild: {
+    legalComments: "none",
   },
   server: {
     proxy: {

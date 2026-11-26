@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
@@ -6,18 +7,77 @@
       'Microsoft YaHei', 'Noto Sans SC', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, 'Cascadia Mono', Consolas,
       'Liberation Mono', Menlo, monospace;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
   }
 
   body {
     font-family: var(--font-sans);
     background-color: #F8FAFC;
     color: #0F172A;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  html.dark body {
+    background-color: #090D16;
+    color: #F1F5F9;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [role="button"]:focus-visible,
+  [role="tab"]:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid #0284C7;
+    outline-offset: 2px;
+  }
+
+  html.dark button:focus-visible,
+  html.dark a:focus-visible,
+  html.dark input:focus-visible,
+  html.dark select:focus-visible,
+  html.dark textarea:focus-visible,
+  html.dark [role="button"]:focus-visible,
+  html.dark [role="tab"]:focus-visible,
+  html.dark [tabindex]:focus-visible {
+    outline-color: #38BDF8;
   }
 }
 
 .font-mono-num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* Precision Flight Instrument subtle hairline grid backdrop */
+.telemetry-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+html.dark .telemetry-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.surface-panel {
+  background-color: #FFFFFF;
+  border-color: rgba(226, 232, 240, 0.9);
+}
+
+html.dark .surface-panel {
+  background-color: #0F172A;
+  border-color: rgba(30, 41, 59, 0.95);
 }
 
 /* Wails desktop: header is draggable, every interactive control inside opts out. */
@@ -105,4 +165,31 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-ping,
+  .animate-pulse,
+  .animate-spin,
+  .animate-radar-sweep,
+  .animate-pulse-ring {
+    animation: none !important;
+  }
 }

@@ -5,6 +5,7 @@ import (
 	"ai-flight-dashboard/internal/alert"
 	"ai-flight-dashboard/internal/calculator"
 	"ai-flight-dashboard/internal/config"
+	"ai-flight-dashboard/internal/dashboard"
 	"ai-flight-dashboard/internal/db"
 	"ai-flight-dashboard/internal/desktop"
 	"ai-flight-dashboard/internal/forwarder"
@@ -37,6 +38,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	goruntime "runtime"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -141,20 +143,9 @@ func main() {
 		return
 	}
 
-	// Initialize Calculator from pricing table
-	pricingData := embeddedPricing
-	if dynPricing, err := fetchDynamicPricingFromURLs(pricingTableURLs, 3*time.Second); err == nil {
-		if mergedPricing, err := mergePricingData(embeddedPricing, dynPricing); err == nil {
-			fmt.Println("☁️  Successfully fetched dynamic pricing table from GitHub.")
-			pricingData = mergedPricing
-		} else {
-			fmt.Printf("⚠️  Failed to merge dynamic pricing table, using embedded version: %v\n", err)
-		}
-	} else {
-		fmt.Printf("⚠️  Failed to fetch dynamic pricing table, using embedded version: %v\n", err)
-	}
-
-	calc, err := calculator.NewFromBytes(pricingData)
+	// Initialize Calculator immediately from embedded pricing + custom overrides;
+	// dynamic pricing fetch and conditional cost backfill run asynchronously below.
+	calc, err := calculator.NewFromBytes(embeddedPricing)
 	if err != nil {
 		log.Fatalf("Failed to initialize calculator: %v", err)
 	}
@@ -190,15 +181,14 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer database.Close()
-	if n, err := database.BackfillProjectsFromFilePaths(watcher.ExtractProjectName); err != nil {
-		log.Printf("Failed to backfill project names: %v", err)
-	} else if n > 0 {
-		fmt.Printf("🧭 Backfilled project names for %d existing records.\n", n)
-	}
-	if n, err := database.RecalculateUsageCosts(calc.CalculateCost); err != nil {
-		log.Printf("Failed to recalculate usage costs: %v", err)
-	} else if n > 0 {
-		fmt.Printf("💸 Recalculated usage costs for %d existing records.\n", n)
+	if needsBackfill, err := database.HasRecordsNeedingProjectBackfill(); err != nil {
+		log.Printf("Failed to check project backfill state: %v", err)
+	} else if needsBackfill {
+		if n, err := database.BackfillProjectsFromFilePaths(watcher.ExtractProjectName); err != nil {
+			log.Printf("Failed to backfill project names: %v", err)
+		} else if n > 0 {
+			fmt.Printf("🧭 Backfilled project names for %d existing records.\n", n)
+		}
 	}
 	const projectMetadataMigrationKey = "migration:project-metadata-v2"
 	if done, err := database.GetOffset(projectMetadataMigrationKey); err == nil && done == 0 {
@@ -248,6 +238,18 @@ func main() {
 		return
 	}
 
+	statsCache := dashboard.NewStatsCache(10 * time.Second)
+	var bgWG sync.WaitGroup
+	defer func() {
+		cancel()
+		bgWG.Wait()
+	}()
+	bgWG.Add(1)
+	go func() {
+		defer bgWG.Done()
+		syncDynamicPricingAndRecalc(ctx, database, calc, statsCache, pricingTableURLs, 3*time.Second)
+	}()
+
 	// Initialize Watcher immediately (instant, ~26µs)
 	w, err := watcher.New(*deviceID)
 	if err != nil {
@@ -294,6 +296,7 @@ func main() {
 	}
 
 	sink := source.NewDBSink(database, calc, *deviceID, func(u model.TokenUsage) {
+		statsCache.Clear()
 		select {
 		case w.UsageChan <- u:
 		default:
@@ -400,6 +403,7 @@ func main() {
 							log.Printf("Failed to insert usage for device %s: %v", effectiveDevice, err)
 							continue
 						}
+						statsCache.Clear()
 					}
 					var activeLAN *lan.LAN
 					if lanController != nil {
@@ -419,7 +423,7 @@ func main() {
 		lanController = newRuntimeLANController(ctx, *lanMode, *deviceID, *port, *token, database, w.BroadcastChan, w.UsageChan, startLANHTTPServer, startLANGoroutines)
 		startDBDrain()
 
-		app := desktop.NewApp(database, calc)
+		app := desktop.NewAppWithStatsCache(database, calc, statsCache)
 		// Linux status-notifier support varies by desktop environment. On
 		// Linux the window quits on close (see gui_lifecycle.go), so a tray is
 		// optional; avoid opening a DBus status-notifier connection when it
@@ -469,8 +473,9 @@ func main() {
 
 		// Reuse the existing HTTP handler inside Wails.
 		apiHandler := web.NewHandlerWithDeps(database, calc, w, lanController, *token, root.DistBinFS, web.HandlerDeps{
-			Sources: registry,
-			Plugins: pluginController,
+			Sources:    registry,
+			Plugins:    pluginController,
+			StatsCache: statsCache,
 		})
 
 		guiOptions := &options.App{
@@ -519,8 +524,9 @@ func main() {
 
 		// Web dashboard mode with graceful shutdown
 		handler := web.NewHandlerWithDeps(database, calc, w, lanController, *token, root.DistBinFS, web.HandlerDeps{
-			Sources: registry,
-			Plugins: pluginController,
+			Sources:    registry,
+			Plugins:    pluginController,
+			StatsCache: statsCache,
 		})
 		srv := &http.Server{Addr: "0.0.0.0:" + *port, Handler: handler}
 		ln, err := net.Listen("tcp", srv.Addr)

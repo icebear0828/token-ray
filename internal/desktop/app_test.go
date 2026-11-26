@@ -63,3 +63,38 @@ func TestGetPricingIncludesCacheCreationPrice(t *testing.T) {
 	}
 	t.Fatal("expected claude-opus-4-7 pricing entry")
 }
+
+func TestSetDeviceAliasInvalidatesStatsCache(t *testing.T) {
+	database, calc := testutil.NewTestDBAndCalc(t)
+	defer database.Close()
+
+	now := time.Now().UTC()
+	if err := database.InsertUsageWithTime(
+		model.TokenUsage{Source: "Claude Code", Model: "claude-opus-4-7", InputTokens: 1000, OutputTokens: 200},
+		1.50, now.Add(-time.Minute), "/claude.jsonl", "nas.local",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	app := desktop.NewApp(database, calc)
+
+	initial, err := app.GetStats("all", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(initial.Devices) != 1 || initial.Devices[0].DisplayName != "nas.local" {
+		t.Fatalf("expected initial display name nas.local, got %+v", initial.Devices)
+	}
+
+	if err := app.SetDeviceAlias("nas.local", "Studio NAS"); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := app.GetStats("all", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Devices) != 1 || updated.Devices[0].DisplayName != "Studio NAS" {
+		t.Fatalf("expected stats cache invalidated with Studio NAS display name, got %+v", updated.Devices)
+	}
+}
