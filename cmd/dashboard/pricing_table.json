@@ -1998,6 +1998,12 @@
       "cache_creation_price_per_m": 12.5,
       "output_price_per_m": 50
     },
+    "gpt-6-astra-healthcare": {
+      "input_price_per_m": 10,
+      "cached_price_per_m": 1,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 50
+    },
     "gpt-6-astra-law": {
       "input_price_per_m": 10,
       "cached_price_per_m": 1,
@@ -2058,6 +2064,12 @@
       "cache_creation_price_per_m": 2.5,
       "output_price_per_m": 10
     },
+    "gpt-6.1-sol-healthcare": {
+      "input_price_per_m": 2,
+      "cached_price_per_m": 0.1,
+      "cache_creation_price_per_m": 0,
+      "output_price_per_m": 10
+    },
     "gpt-6.1-terra": {
       "input_price_per_m": 1,
       "cached_price_per_m": 0.05,
@@ -2070,6 +2082,12 @@
       "cache_creation_price_per_m": 10,
       "output_price_per_m": 40
     },
+    "gpt-6.2-astra-healthcare": {
+      "input_price_per_m": 8,
+      "cached_price_per_m": 0.4,
+      "cache_creation_price_per_m": 10,
+      "output_price_per_m": 40
+    },
     "gpt-6.2-astra-law": {
       "input_price_per_m": 8,
       "cached_price_per_m": 0.4,
@@ -2077,6 +2095,12 @@
       "output_price_per_m": 40
     },
     "gpt-6.2-sol": {
+      "input_price_per_m": 2,
+      "cached_price_per_m": 0.1,
+      "cache_creation_price_per_m": 2.5,
+      "output_price_per_m": 10
+    },
+    "gpt-6.2-sol-healthcare": {
       "input_price_per_m": 2,
       "cached_price_per_m": 0.1,
       "cache_creation_price_per_m": 2.5,
